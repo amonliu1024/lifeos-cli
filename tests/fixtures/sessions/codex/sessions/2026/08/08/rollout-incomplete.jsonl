@@ -1,0 +1,6 @@
+{"timestamp":"2026-08-08T03:00:00Z","type":"session_meta","payload":{"id":"thread-incomplete","session_id":"session-incomplete","cwd":"/synthetic/incomplete"}}
+{"timestamp":"2026-08-08T03:00:01Z","type":"turn_context","payload":{"turn_id":"turn-incomplete"}}
+{"timestamp":"2026-08-08T03:00:02Z","type":"event_msg","payload":{"type":"user_message","message":"请继续处理","id":"user-incomplete"}}
+{"timestamp":"2026-08-08T03:00:03Z","type":"event_msg","payload":{"type":"agent_message","message":"正在处理但尚未结束","id":"agent-incomplete"}}
+{"timestamp":"2026-08-08T03:00:04Z","type":"response_item","payload":{"type":"function_call","name":"run_check","arguments":"{}","id":"tool-incomplete"}}
+{"timestamp":"2026-08-08T03:00:05Z","type":"event_msg","payload":{"type":"user_message","message":"尾行未完成"

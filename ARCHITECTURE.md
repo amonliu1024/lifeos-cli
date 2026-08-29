@@ -1,0 +1,90 @@
+# LifeOS CLI 架构
+
+本文描述当前仓库内部的模块、配置、存储、数据流和安全边界，并随 CLI 版本共同回滚。LifeOS 划分为三个信任区：公开代码仓库、本机私有配置和私有 Runtime；可复用行为进入版本管理，身份与本机路径通过配置提供，个人事实和辅助证据不进入 Git。
+
+```text
+lifeos-cli 仓库
+  命令模块、适配器、校验、测试、通用 Agent Skill
+                    |
+                    v
+~/.config/lifeos/config.json
+  已启用的内置模块和本机来源配置
+                    |
+                    v
+$LIFEOS_HOME（默认 ~/.local/share/lifeos）
+  Work 权威事实、审计事件、证据存储、日报
+```
+
+## 能力组合
+
+`lifeos_work.cli` 是命令组合根，`lifeos_modules.COMMAND_MODULES` 是顶层命令模块的静态注册表。静态注册让代码审查、打包和安全边界保持可见；配置不能指定导入路径，也不能加载任意代码。
+
+可选能力在下一层使用相同模式：
+
+- `lifeos_sessions.adapters.SESSION_SOURCES` 将受支持的来源名称映射到延迟加载的适配器工厂和来源根探测器。
+- `lifeos_projects.sources.PROJECT_SOURCE_ADAPTERS` 负责项目清单中来源特有字段的校验。
+- `lifeos_config` 负责本机私有模块设置和无副作用的能力检查。
+
+因此，新增内置模块必须在同一个仓库内同时完成代码、注册、测试和文档；是否在某台机器上启用该模块，则始终是本机私有配置的选择。
+
+## 数据 Owner
+
+| 数据 | 唯一 Owner | 写入路径 |
+| --- | --- | --- |
+| 当前发布行为与 Schema | 仓库代码和文档 | 经审查的 Git 变更 |
+| 项目身份与来源链接 | 项目根 `lifeos-project.json` | 项目维护者写入，再执行 `lifeos project validate` |
+| 已启用模块和本机路径 | 私有配置 | `lifeos config` 或模块配置命令 |
+| 个人工作事实 | Work Runtime | 仅通过 `lifeos work` |
+| Agent 会话派生数据 | Sessions Runtime | `lifeos sessions scan/rebuild/prune` |
+| 本地提交证据 | Git Evidence Runtime | `lifeos git` |
+| DChat 原始 revision 与索引 | DChat Runtime | `lifeos dchat scan` |
+| 日报 | Reports Runtime | `lifeos reports` 与 Agent Skill |
+
+派生 Markdown 和 SQLite 索引都不是替代事实源。Work 写入必须在同一个事务边界内完成互斥锁、校验、原子替换、审计事件和派生视图刷新。
+
+新写入的幂等键从不可变来源身份派生，不使用时间或可变展示文字。已经存在的审计事件保持只追加，不为适配新的当前 Schema 批量改写。
+
+## 项目清单
+
+Schema 1 把稳定的项目外壳与来源适配器分开：
+
+```json
+{
+  "schema_version": 1,
+  "project_key": "example-project",
+  "name": "示例项目",
+  "aliases": [],
+  "scope": "project",
+  "sources": {
+    "dchat": {"groups": []},
+    "cooper": {"resources": []}
+  }
+}
+```
+
+核心层只校验项目身份和作用域，每个来源适配器只校验自己的 payload。当前仓库只接受 Schema 1，不包含公开前格式的读取 fallback 或迁移路径。
+
+## 证据流
+
+```text
+本机来源 --> 只读适配器 --> 规范化的私有 revision / index
+                                      |
+                                      v
+                              有边界的 CLI 视图
+                                      |
+                                      v
+                              Agent 解释 / 日报
+```
+
+来源适配器保留来源身份；输入不完整或未知时直接报告，不做猜测。Sessions、Git 和 DChat 证据不会写入 Work。日报工作流可以组合这些证据，但候选工作只有经过用户单独授权后才能成为 Work 事实。
+
+Sessions checkpoint 的 `cache_generation` 由来源 Adapter revision、shared extraction revision 和 Slice Schema 共同决定。来源特有解析变化只提升对应 Adapter revision，共享提取或判断语义变化提升 shared extraction revision；验证重扫是否生效应检查扫描报告的 `files_read` 与 `reused`，不能只依据成功退出码。
+
+## 安全属性
+
+- 配置 Schema 拒绝未知字段和疑似凭据字段，不充当通用秘密存储。
+- Runtime 与配置默认位于仓库之外，并使用仅属主可访问的权限。
+- 只读能力检查不会创建配置目录或 Runtime 目录。
+- DChat 在显式配置前保持禁用。
+- 测试只使用合成 fixture 和临时 home。
+- 本地实现、提交、推送、发布、部署和目标环境验证是彼此独立的交付状态，不能互相推断。

@@ -1,0 +1,6 @@
+{"timestamp":"2026-08-08T03:00:00Z","type":"session_meta","payload":{"id":"sw-ordinary","cwd":"/synthetic/ordinary","source":"smartwork","originator":"synthetic"}}
+{"timestamp":"2026-08-08T03:00:01Z","type":"turn_context","payload":{"turn_id":"turn-ordinary"}}
+{"timestamp":"2026-08-08T03:00:02Z","type":"event_msg","payload":{"type":"user_message","message":"普通合成问题","id":"ordinary-user"}}
+{"timestamp":"2026-08-08T03:00:02.500Z","type":"event_msg","payload":{"type":"error","message":"合成工具失败","id":"ordinary-error"}}
+{"timestamp":"2026-08-08T03:00:02.750Z","type":"event_msg","payload":{"type":"turn_aborted","reason":"合成执行中止","id":"ordinary-aborted"}}
+{"timestamp":"2026-08-08T03:00:03Z","type":"event_msg","payload":{"type":"task_complete","last_agent_message":"普通合成结果","id":"ordinary-complete"}}

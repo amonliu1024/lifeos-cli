@@ -1,0 +1,25 @@
+__pycache__/
+*.py[cod]
+.DS_Store
+.coverage
+.pytest_cache/
+.venv/
+build/
+dist/
+*.egg-info/
+
+# Personal runtime data must never enter this repository.
+/commitments.json
+/requirements.json
+/ideas.json
+/glossary.json
+/events.jsonl
+/now.md
+/requirements-radar.md
+/ideas.md
+/glossary.md
+/.lifeos.lock
+
+# Machine-local configuration and personal Agent preferences.
+/config.json
+/agent-profile.md

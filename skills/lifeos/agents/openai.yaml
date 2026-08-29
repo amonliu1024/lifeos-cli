@@ -1,0 +1,4 @@
+interface:
+  display_name: "LifeOS"
+  short_description: "管理 LifeOS Work，并基于真实证据生成与确认日报"
+  default_prompt: "请使用 $lifeos 查看或更新我的 LifeOS 工作账本，或基于真实证据生成自然日日报。"

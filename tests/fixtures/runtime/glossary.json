@@ -1,0 +1,47 @@
+{
+  "schema_version": 1,
+  "updated_at": "2026-08-27T16:05:42+08:00",
+  "terms": [
+    {
+      "id": "ENT-SELF",
+      "name": "测试用户",
+      "kind": "self",
+      "aliases": [
+        "self",
+        "sample-user"
+      ],
+      "description": "用于隔离测试的合成用户。",
+      "related_items": [],
+      "sources": [
+        {
+          "kind": "agent_input",
+          "location": "test fixture",
+          "section": "lifeos input",
+          "observed_at": "2026-07-25"
+        }
+      ],
+      "confirmed_at": "2026-07-25"
+    },
+    {
+      "id": "ENT-20260725-001",
+      "name": "测试实体",
+      "kind": "person",
+      "aliases": [
+        "sample-alias"
+      ],
+      "description": "用于查询测试的合成实体。",
+      "related_items": [
+        "WI-20260725-001"
+      ],
+      "sources": [
+        {
+          "kind": "agent_input",
+          "location": "test fixture",
+          "section": "lifeos input",
+          "observed_at": "2026-07-25"
+        }
+      ],
+      "confirmed_at": "2026-07-25"
+    }
+  ]
+}

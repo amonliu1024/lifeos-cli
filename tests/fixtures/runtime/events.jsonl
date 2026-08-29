@@ -1,0 +1,2 @@
+{"event_id":"EVT-20260725-001","occurred_at":"2026-07-25T16:40:00+08:00","actor":{"kind":"agent","name":"Fixture Agent"},"kind":"task_created","task_id":"TASK-20260725-001","summary":"创建合成待办","sources":["test fixture"]}
+{"event_id":"EVT-20260729-001","occurred_at":"2026-07-29T01:35:36+08:00","actor":{"kind":"agent","name":"Fixture Agent"},"kind":"work_observed","summary":"合成工作观察记录","sources":["test fixture"]}

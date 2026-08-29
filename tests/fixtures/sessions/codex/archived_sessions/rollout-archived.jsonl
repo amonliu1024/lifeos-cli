@@ -1,0 +1,4 @@
+{"timestamp":"2026-07-01T00:00:00Z","type":"session_meta","payload":{"id":"thread-codex-1","session_id":"session-root-1","cwd":"/synthetic/workspace","title":"Synthetic continuation"}}
+{"timestamp":"2026-07-01T00:00:01Z","type":"turn_context","payload":{"turn_id":"turn-old","session_id":"session-root-1"}}
+{"timestamp":"2026-07-01T00:00:02Z","type":"event_msg","payload":{"type":"user_message","message":"历史问题（窗口外）","id":"user-old"}}
+{"timestamp":"2026-07-01T00:00:04Z","type":"response_item","payload":{"type":"message","role":"assistant","phase":"final","content":[{"type":"output_text","text":"历史结果"}],"id":"assistant-old"}}

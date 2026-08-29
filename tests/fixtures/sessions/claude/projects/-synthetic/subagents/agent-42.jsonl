@@ -1,0 +1,2 @@
+{"type":"user","sessionId":"claude-side-42","agentId":"agent-42","isSidechain":true,"uuid":"side-user","parentUuid":null,"timestamp":"2026-08-08T00:01:02Z","message":{"role":"user","content":"检查第二个问题"}}
+{"type":"assistant","sessionId":"claude-side-42","agentId":"agent-42","isSidechain":true,"uuid":"side-assistant","parentUuid":"side-user","timestamp":"2026-08-08T00:01:03Z","message":{"role":"assistant","content":[{"type":"thinking","thinking":"private"},{"type":"text","text":"已完成检查，未发现问题。"}],"stop_reason":"end_turn"}}

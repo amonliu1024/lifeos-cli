@@ -1,0 +1,72 @@
+{
+  "schema_version": 1,
+  "updated_at": "2026-08-27T16:05:42+08:00",
+  "tasks": [
+    {
+      "id": "TASK-20260725-001",
+      "outcome": "测试待办 1",
+      "work_item_id": "WI-20260725-001",
+      "project_id": null,
+      "milestone_id": null,
+      "status": "active",
+      "status_reason": null,
+      "responsible_party": {
+        "kind": "self",
+        "name": "测试用户",
+        "entity_id": "ENT-SELF"
+      },
+      "next_action": {
+        "text": "执行测试动作"
+      },
+      "due_at": "2026-08-03",
+      "why": "test fixture",
+      "completion_criteria": "测试断言通过",
+      "context": null,
+      "completion": null,
+      "sources": [
+        {
+          "kind": "agent_input",
+          "location": "test fixture",
+          "section": "lifeos input",
+          "observed_at": "2026-07-25"
+        }
+      ],
+      "created_at": "2026-07-25T16:39:31+08:00",
+      "updated_at": "2026-07-25T17:09:25+08:00",
+      "closed_at": null
+    },
+    {
+      "id": "TASK-20260725-002",
+      "outcome": "测试待办 2",
+      "work_item_id": null,
+      "project_id": null,
+      "milestone_id": null,
+      "status": "active",
+      "status_reason": "test fixture",
+      "responsible_party": {
+        "kind": "self",
+        "name": "测试用户",
+        "entity_id": "ENT-SELF"
+      },
+      "next_action": {
+        "text": "执行测试动作"
+      },
+      "due_at": null,
+      "why": "test fixture",
+      "completion_criteria": "测试断言通过",
+      "context": "test fixture",
+      "completion": null,
+      "sources": [
+        {
+          "kind": "agent_input",
+          "location": "test fixture",
+          "section": "lifeos input",
+          "observed_at": "2026-07-25"
+        }
+      ],
+      "created_at": "2026-07-25T16:39:31+08:00",
+      "updated_at": "2026-07-27T21:13:31+08:00",
+      "closed_at": null
+    }
+  ]
+}
