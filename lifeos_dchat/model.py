@@ -78,7 +78,9 @@ def message_key(message: Mapping[str, Any]) -> Optional[str]:
 
 
 def occurred_at(message: Mapping[str, Any]) -> Optional[str]:
-    for key in ("occurred_at", "timestamp", "ts", "created_at", "create_time"):
+    for key in (
+        "occurred_at", "timestamp", "ts", "created_at", "created_ts", "create_time"
+    ):
         value = message.get(key)
         if value is None or value == "":
             continue
@@ -95,6 +97,21 @@ def occurred_at(message: Mapping[str, Any]) -> Optional[str]:
         except (ValueError, TypeError, OSError, OverflowError):
             continue
     return None
+
+
+def timestamp_field_types(message: Mapping[str, Any]) -> str:
+    """Describe timestamp-like field shapes without retaining their values."""
+
+    fields = []
+    for raw_key, value in message.items():
+        key = str(raw_key)
+        lowered = key.lower()
+        if not any(marker in lowered for marker in ("time", "timestamp", "created", "_ts", "ts_")):
+            continue
+        if not key.replace("_", "").replace("-", "").replace(".", "").isalnum():
+            continue
+        fields.append(f"{key[:64]}:{type(value).__name__}")
+    return ",".join(sorted(fields)[:8]) or "none"
 
 
 def scope_for(chat: Mapping[str, Any], attention_tag_id: str) -> tuple[str, list[str]]:

@@ -236,9 +236,11 @@ def command_path(args: Any) -> None:
     reports_root: Path = args.reports_root
     day: date = args.day
     path = store.report_path(reports_root, day)
+    window_from, window_to = store.day_window(day)
     payload: Dict[str, Any] = {
         "day": day.isoformat(),
         "path": str(path),
+        "window": {"from": window_from.isoformat(), "to": window_to.isoformat()},
         "exists": path.exists(),
         "status": None,
         "generated_at": None,

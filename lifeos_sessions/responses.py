@@ -96,6 +96,7 @@ _USER_TYPES = {"user", "user_message", "input", "prompt"}
 _AGENT_TYPES = {"assistant", "assistant_message", "agent", "agent_message", "final_message"}
 _META_TYPES = {"session_meta", "turn_context", "session_started", "session_ended", "scan_meta"}
 _KNOWN_NOISE_TYPES = {
+    "compaction",
     "compacted",
     "context_compacted",
     "reasoning",

@@ -371,6 +371,13 @@ class PathAndListTest(ReportsCLITestCase):
         payload = json.loads(self.run_cli("path", "--day", "2026-08-09", "--json").stdout)
         self.assertFalse(payload["exists"])
         self.assertIsNone(payload["status"])
+        self.assertEqual(
+            {
+                "from": "2026-08-09T00:00:00+08:00",
+                "to": "2026-08-10T00:00:00+08:00",
+            },
+            payload["window"],
+        )
         self.assertFalse(self.daily_dir.exists())
 
     def test_list_reports_missing_days_inside_the_window(self):

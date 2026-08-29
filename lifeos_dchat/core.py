@@ -16,6 +16,8 @@ from .model import (
     message_key,
     occurred_at,
     scope_for,
+    stable_component,
+    timestamp_field_types,
 )
 
 
@@ -24,6 +26,7 @@ UTC = timezone.utc
 MAX_SOURCE_WINDOW = timedelta(days=30)
 MIN_SPLIT_WINDOW = timedelta(seconds=1)
 DEFAULT_LIMIT = 500
+MAX_MISSING_TIME_DETAILS = 8
 
 
 class DChatError(RuntimeError):
@@ -178,6 +181,7 @@ class DChatService:
         messages: Dict[str, Dict[str, Any]] = {}
         windows: List[Dict[str, Any]] = []
         warnings: List[str] = []
+        missing_time_count = 0
         while pending:
             start, end = pending.pop(0)
             start_text, end_text = _local(start), _local(end)
@@ -197,7 +201,18 @@ class DChatService:
                     warnings.append("message_key_missing")
                     continue
                 if not when:
-                    warnings.append("message_time_missing")
+                    missing_time_count += 1
+                    if missing_time_count <= MAX_MISSING_TIME_DETAILS:
+                        warnings.append(
+                            "message_time_missing:"
+                            f"message_ref={stable_component(key)[:12]}:"
+                            f"timestamp_fields={timestamp_field_types(raw)}"
+                        )
                 messages[key] = {"message_key": key, "occurred_at": when, "payload": dict(raw)}
+        if missing_time_count > MAX_MISSING_TIME_DETAILS:
+            warnings.append(
+                "message_time_missing:"
+                f"omitted={missing_time_count - MAX_MISSING_TIME_DETAILS}"
+            )
         ordered = sorted(messages.values(), key=lambda item: (item.get("occurred_at") or "", item["message_key"]))
         return ordered, windows, sorted(set(warnings))

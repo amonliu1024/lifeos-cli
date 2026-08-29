@@ -132,6 +132,48 @@ class DChatScopeTest(unittest.TestCase):
         self.assertEqual("partial", result["status"])
         self.assertIn("range_truncated", result["conversations"][0]["warnings"])
 
+    def test_missing_message_time_reports_bounded_shape_diagnostics(self):
+        class RawClient(FakeDChatClient):
+            def dump_messages(self, conversation_id, from_value, to_value, limit):
+                self.calls.append((conversation_id, from_value, to_value, limit))
+                return [
+                    {"key": f"missing-{index}", "createTime": "not-a-time", "text": "secret"}
+                    for index in range(10)
+                ]
+
+        client = RawClient([{"vchannel_id": "dm", "type": "p2p"}], {})
+        result = DChatService(client, "lifeos", limit=20).scan(
+            TimeWindow.from_values("2026-08-24", "2026-08-25")
+        )
+
+        row = result["conversations"][0]
+        details = [item for item in row["warnings"] if "message_ref=" in item]
+        self.assertEqual("partial", row["status"])
+        self.assertEqual(8, len(details))
+        self.assertTrue(all("timestamp_fields=createTime:str" in item for item in details))
+        self.assertIn("message_time_missing:omitted=2", row["warnings"])
+        self.assertNotIn("secret", " ".join(row["warnings"]))
+
+    def test_created_ts_is_accepted_as_message_time(self):
+        class RawClient(FakeDChatClient):
+            def dump_messages(self, conversation_id, from_value, to_value, limit):
+                self.calls.append((conversation_id, from_value, to_value, limit))
+                return [{
+                    "key": "created-ts",
+                    "created_at": "not-an-iso-time",
+                    "created_ts": 1787875200000,
+                }]
+
+        client = RawClient([{"vchannel_id": "dm", "type": "p2p"}], {})
+        result = DChatService(client, "lifeos", limit=20).scan(
+            TimeWindow.from_values("2026-08-28", "2026-08-29")
+        )
+
+        row = result["conversations"][0]
+        self.assertEqual("complete", row["status"])
+        self.assertEqual([], row["warnings"])
+        self.assertEqual("2026-08-28T00:00:00+00:00", row["messages"][0]["occurred_at"])
+
 
 class DChatStoreTest(unittest.TestCase):
     def setUp(self):

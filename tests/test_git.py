@@ -192,6 +192,27 @@ class GitCLITest(unittest.TestCase):
         findings = json.loads(result.stdout)["findings"]
         self.assertTrue(any("目录权限" in item["problem"] for item in findings))
 
+    def test_validate_reports_an_enabled_repository_with_a_stale_root(self):
+        self.run_lifeos(
+            "git", "repos", "add", "--key", "lifeos-cli",
+            "--root", str(self.repo_dir),
+        )
+        registry_path = self.data_dir / "git" / "repos.json"
+        registry = json.loads(registry_path.read_text(encoding="utf-8"))
+        registry["repositories"][0]["root"] = str(
+            Path(self.temporary_directory.name) / "missing-checkout"
+        )
+        registry_path.write_text(json.dumps(registry), encoding="utf-8")
+
+        result = self.run_lifeos("git", "validate", "--json", check=False)
+
+        self.assertEqual(1, result.returncode)
+        findings = json.loads(result.stdout)["findings"]
+        self.assertTrue(any(
+            item["scope"] == "repo:lifeos-cli" and "仓库目录不存在" in item["problem"]
+            for item in findings
+        ))
+
     def test_registry_and_scan_require_an_explicit_schema1(self):
         store = GitStore(self.data_dir / "git")
         self.run_lifeos(

@@ -9,7 +9,7 @@ lifeos reports path --day <YYYY-MM-DD> --json
 lifeos reports begin --day <YYYY-MM-DD> --json
 ```
 
-目标日默认今天；日期边界只使用 `begin` 返回的 `window.from` / `window.to`。已确认日报保持不变；只有本人明确要求重做时才使用 `--redo`。
+目标日默认今天。先用只读的 `path` 取得状态和唯一自然日窗口；日报尚未确认、需要建立或覆盖 draft 时再执行 `begin`，并核对两者返回的 `window.from` / `window.to` 完全一致。已确认日报保持不变；本人只要求重新采集证据时，直接使用 `path` 返回的窗口，不调用 `begin`，也不自行做日期运算。只有本人明确要求重做日报时才使用 `begin --redo`。
 
 完成标准：目标状态和唯一自然日窗口已取得；重做时旧快照已由 CLI 留存。
 

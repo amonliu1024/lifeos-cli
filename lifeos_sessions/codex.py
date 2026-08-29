@@ -184,7 +184,7 @@ class CodexAdapter:
     name = "codex"
     # Bumped only for Codex-specific parsing changes. Shared extraction and
     # Slice Schema revisions enter the composed checkpoint generation below.
-    adapter_version = "1"
+    adapter_version = "2"
     source_format = "codex-responses-jsonl"
 
     @property

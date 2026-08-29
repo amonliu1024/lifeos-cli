@@ -175,10 +175,28 @@ def command_show(args: Any) -> None:
 
 
 def command_validate(args: Any) -> None:
+    store = _store(args)
     try:
-        findings = _store(args).validate(args.scan_id)
+        findings = store.validate(args.scan_id)
     except GitStoreError as exc:
         _fail(str(exc))
+    try:
+        repositories = store.load_registry()
+    except GitStoreError:
+        # ``store.validate`` already returns the registry problem in a
+        # structured finding.  A malformed registry cannot be inspected
+        # further without guessing its contents.
+        repositories = []
+    for repository in repositories:
+        if not repository.enabled:
+            continue
+        try:
+            verify_repository_root(repository.root)
+        except GitEvidenceError as exc:
+            findings.append({
+                "scope": f"repo:{repository.key}",
+                "problem": str(exc),
+            })
     payload = {"ok": not findings, "findings": findings}
     _emit(
         args,

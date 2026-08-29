@@ -691,6 +691,7 @@ class CodexAdapterTest(unittest.TestCase):
                 {"timestamp": "2026-08-08T06:10:01Z", "type": "turn_context", "payload": {"turn_id": "turn-noise"}},
                 {"timestamp": "2026-08-08T06:10:02Z", "type": "event_msg", "payload": {"type": "user_message", "message": "噪声测试", "id": "noise-user"}},
                 {"timestamp": "2026-08-08T06:10:03Z", "type": "event_msg", "payload": {"type": "task_started"}},
+                {"timestamp": "2026-08-08T06:10:03Z", "type": "event_msg", "payload": {"type": "compaction"}},
                 {"timestamp": "2026-08-08T06:10:04Z", "type": "response_item", "payload": {"type": "reasoning", "text": "internal"}},
                 {"timestamp": "2026-08-08T06:10:05Z", "type": "event_msg", "payload": {"type": "token_count", "count": 10}},
                 {"timestamp": "2026-08-08T06:10:06Z", "type": "event_msg", "payload": {"type": "thread_settings_applied"}},

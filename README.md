@@ -214,25 +214,18 @@ lifeos dchat scan \
 CLI 负责私有文件、权限、frontmatter 和确认状态，Agent Skill 负责生成正文。除非用户另行授权，日报中的候选内容不会写入 Work。
 
 ```bash
+lifeos reports path --day 2026-08-28 --json
 lifeos reports begin --day 2026-08-28 --json
 lifeos reports write --day 2026-08-28 --body-file /tmp/daily.md
 lifeos reports confirm --day 2026-08-28
 lifeos reports validate
 ```
 
+`reports path --json` 是只读状态入口，并返回该日在 Asia/Shanghai 的完整自然日窗口；已确认日报需要重新采集证据时使用该窗口，不必覆盖日报。
+
 ## Agent Skill
 
-[`skills/lifeos/`](skills/lifeos/) 是由仓库维护的通用 Skill。可将其安装到默认 Codex Skills 目录，也可以显式指定目标：
-
-```bash
-python3 scripts/sync_lifeos_skill.py lifeos
-python3 scripts/sync_lifeos_skill.py lifeos --check
-
-python3 scripts/sync_lifeos_skill.py lifeos \
-  --target /path/to/another/skills/lifeos
-```
-
-同步以内容清单为依据：先暂存新副本，再原子替换真实目标目录。脚本拒绝符号链接目标，也不会把个人偏好写回仓库 Skill。
+[`skills/lifeos/`](skills/lifeos/) 是由仓库维护的通用 Skill。CLI 版本、制品、SmartWork / cc-switch 同步与回滚统一按 [`DEPLOYMENT.md`](DEPLOYMENT.md) 执行；不会把个人偏好写回仓库 Skill，也不会从同步推导真实 Runtime 已切换。
 
 ## v1 基线
 
@@ -243,6 +236,7 @@ python3 scripts/sync_lifeos_skill.py lifeos \
 ## 深入阅读
 
 - [架构](ARCHITECTURE.md)
+- [部署与发布](DEPLOYMENT.md)
 - [安全说明](SECURITY.md)
 
 ## 开发与验证
