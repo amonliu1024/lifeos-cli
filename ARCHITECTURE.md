@@ -23,6 +23,7 @@ $LIFEOS_HOME（默认 ~/.local/share/lifeos）
 
 - `lifeos_sessions.adapters.SESSION_SOURCES` 将受支持的来源名称映射到延迟加载的适配器工厂和来源根探测器。
 - `lifeos_projects.sources.PROJECT_SOURCE_ADAPTERS` 负责项目清单中来源特有字段的校验。
+- `lifeos_projects.catalog.ProjectCatalog` 从私人配置声明的根目录动态发现清单，隔离非法清单与同键冲突，并为 Work、Sessions、DChat 和 Git 提供唯一项目目录 seam。
 - `lifeos_config` 负责本机私有模块设置和无副作用的能力检查。
 
 因此，新增内置模块必须在同一个仓库内同时完成代码、注册、测试和文档；是否在某台机器上启用该模块，则始终是本机私有配置的选择。
@@ -33,6 +34,8 @@ $LIFEOS_HOME（默认 ~/.local/share/lifeos）
 | --- | --- | --- |
 | 当前发布行为与 Schema | 仓库代码和文档 | 经审查的 Git 变更 |
 | 项目身份与来源链接 | 项目根 `lifeos-project.json` | 项目维护者写入，再执行 `lifeos project validate` |
+| 项目发现范围 | 私有配置 `modules.projects` | `lifeos config project-root` |
+| 当前项目目录 | 动态 Project Catalog | 只读完整扫描；不持久化为第二事实源 |
 | 已启用模块和本机路径 | 私有配置 | `lifeos config` 或模块配置命令 |
 | 个人工作事实 | Work Runtime | 仅通过 `lifeos work` |
 | Agent 会话派生数据 | Sessions Runtime | `lifeos sessions scan/rebuild/prune` |
@@ -63,6 +66,8 @@ Schema 1 把稳定的项目外壳与来源适配器分开：
 ```
 
 核心层只校验项目身份和作用域，每个来源适配器只校验自己的 payload。当前仓库只接受 Schema 1，不包含公开前格式的读取 fallback 或迁移路径。
+
+Project Catalog 扫描全部配置根，不跟随符号链接，也不从 Work 历史路径猜测项目。一个合法清单无需 Work 注册即可被证据模块消费；Work 的项目记录只保存 `PRJ-*`、`project_key` 和个人跟踪状态。项目移动后只要键不变且当前路径唯一，下一次扫描直接使用新位置；同键多路径全部隔离，单个非法或失联项目不会阻断其他项目。
 
 ## 证据流
 

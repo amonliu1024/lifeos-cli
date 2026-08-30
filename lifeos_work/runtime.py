@@ -16,6 +16,7 @@ from .config import (
     ACHIEVEMENTS_PATH,
     ACHIEVEMENTS_VIEW_PATH,
     CURRENT_SCHEMA_VERSION,
+    CURRENT_SCHEMA_VERSIONS,
     DATA_DIR,
     EVENTS_PATH,
     GLOSSARY_PATH,
@@ -25,6 +26,7 @@ from .config import (
     LOCK_PATH,
     NOW_PATH,
     PROJECTS_PATH,
+    PROJECTS_SCHEMA_VERSION,
     PROJECTS_VIEW_PATH,
     SELF_ENTITY_ID,
     TASKS_PATH,
@@ -36,11 +38,13 @@ from .model import idempotent_event, iso_now, make_event, now, source_objects
 from .validation import current_data_errors
 from .views import current_view_contents
 from lifeos_projects import (
-    ProjectManifestError,
     compact_projects_data,
     hydrate_projects_data,
+    project_linkage_findings,
     project_registry_errors,
 )
+from lifeos_projects.catalog import discover_projects
+from lifeos_projects.registry import LEGACY_STORED_PROJECT_FIELDS
 
 
 DIR_MODE = 0o700
@@ -223,9 +227,13 @@ def read_current_data_unvalidated():
         read_json(IDEAS_PATH),
         read_json(ACHIEVEMENTS_PATH),
     )
-    versions = {value.get("schema_version") for value in data}
-    if versions != {CURRENT_SCHEMA_VERSION}:
-        fail(f"当前 Runtime Schema 不一致或不受支持：{sorted(versions, key=str)}")
+    for filename, value in zip(CURRENT_SCHEMA_VERSIONS, data):
+        expected = CURRENT_SCHEMA_VERSIONS[filename]
+        if value.get("schema_version") != expected:
+            fail(
+                f"当前 Runtime Schema 不受支持：{filename} "
+                f"需要 {expected}，实际 {value.get('schema_version')}"
+            )
     return data
 
 
@@ -234,11 +242,8 @@ def read_current_data():
     errors = current_data_errors(*data, read_events())
     errors.extend(project_registry_errors(data[0]))
     if errors:
-        fail("当前 Runtime 不符合 Schema 1：\n- " + "\n- ".join(errors))
-    try:
-        projects = hydrate_projects_data(data[0])
-    except ProjectManifestError as exc:
-        fail(str(exc))
+        fail("当前 Runtime 不符合当前 Schema：\n- " + "\n- ".join(errors))
+    projects = hydrate_projects_data(data[0])
     return (projects, *data[1:])
 
 
@@ -247,12 +252,12 @@ def require_current_runtime():
 
 
 def command_init(args):
-    """Create a new Schema 1 Work runtime without importing existing data."""
+    """Create a new current Work runtime without importing existing data."""
 
     moment = iso_now()
     sources = source_objects(args.source)
     current = [
-        {"schema_version": CURRENT_SCHEMA_VERSION, "updated_at": moment, "projects": []},
+        {"schema_version": PROJECTS_SCHEMA_VERSION, "updated_at": moment, "projects": []},
         {"schema_version": CURRENT_SCHEMA_VERSION, "updated_at": moment, "work_items": []},
         {"schema_version": CURRENT_SCHEMA_VERSION, "updated_at": moment, "tasks": []},
         {
@@ -282,7 +287,7 @@ def command_init(args):
     errors = current_data_errors(*current, [event])
     errors.extend(project_registry_errors(current[0]))
     if errors:
-        fail("初始化数据不符合 Schema 1：" + "；".join(errors))
+        fail("初始化数据不符合当前 Schema：" + "；".join(errors))
 
     managed_paths = {
         PROJECTS_PATH,
@@ -548,9 +553,11 @@ def transaction(args):
         stored = list(read_current_data_unvalidated())
         events = read_events()
         errors = current_data_errors(*stored, events)
-        errors.extend(project_registry_errors(stored[0]))
         if errors:
-            fail("当前 Runtime 不符合 Schema 1：\n- " + "\n- ".join(errors))
+            fail("当前 Runtime 不符合当前 Schema：\n- " + "\n- ".join(errors))
+        registry_errors = project_registry_errors(stored[0])
+        if registry_errors:
+            fail("当前 Runtime 不符合当前 Schema：\n- " + "\n- ".join(registry_errors))
         current = list(stored)
         current[0] = hydrate_projects_data(stored[0])
         yield WorkTransaction(args, current, events)
@@ -595,16 +602,17 @@ def current_validation_errors(check_views=True):
             errors.append(
                 f"Work 文件权限必须为 0600，当前为 {_mode(path):04o}：{path}"
             )
-    hydrated_projects = projects
-    try:
-        hydrated_projects = hydrate_projects_data(projects)
-    except ProjectManifestError as exc:
-        errors.append(str(exc))
-    check_views = check_views and not errors
+    hydrated_projects = hydrate_projects_data(projects)
+    linkage_findings = project_linkage_findings(projects)
+    check_views = check_views and not errors and not linkage_findings
     if check_views:
         for path, expected in current_view_contents(
             hydrated_projects, work_items, tasks, glossary, ideas, achievements
         ).items():
+            # projects.md includes dynamic Catalog fields and can legitimately
+            # change after a workspace move without any Work mutation.
+            if path == PROJECTS_VIEW_PATH:
+                continue
             if not path.exists() or path.read_text(encoding="utf-8") != expected:
                 errors.append(
                     f"{path.name} 与事实源不一致，请运行 lifeos work refresh"
@@ -618,6 +626,9 @@ def command_validate(_args):
         for error in errors:
             print(f"- {error}", file=sys.stderr)
         raise SystemExit(1)
+    projects = read_current_data_unvalidated()[0]
+    for finding in project_linkage_findings(projects):
+        print(f"警告：{finding}")
     print(
         "OK: 项目引用、事项、待办、闪念、成果胶囊、名词、"
         "内部审计与派生视图一致"
@@ -631,6 +642,138 @@ def command_refresh(_args):
         "已重建 now.md、projects.md、work-items.md、ideas.md、"
         "achievements.md 和 glossary.md"
     )
+
+
+def command_migrate_project_catalog(args):
+    """Remove legacy manifest paths after every tracked key resolves uniquely."""
+
+    with exclusive_lock():
+        pending = _pending_transaction_directories()
+        if pending:
+            fail(
+                "发现未完成的 Work 事务，已拒绝迁移："
+                + "、".join(str(path) for path in pending)
+            )
+        if not current_runtime_active():
+            fail("当前 Runtime 尚未初始化")
+        raw = [
+            read_json(PROJECTS_PATH),
+            read_json(WORK_ITEMS_PATH),
+            read_json(TASKS_PATH),
+            read_json(GLOSSARY_PATH),
+            read_json(IDEAS_PATH),
+            read_json(ACHIEVEMENTS_PATH),
+        ]
+        legacy_projects = raw[0]
+        if legacy_projects.get("schema_version") == PROJECTS_SCHEMA_VERSION:
+            fail("项目跟踪关系已经使用 Project Catalog，无需重复迁移")
+        if legacy_projects.get("schema_version") != 1:
+            fail("只支持从 projects.json Schema 1 迁移")
+        legacy_errors = []
+        for item in legacy_projects.get("projects", []):
+            if not isinstance(item, dict) or set(item) != LEGACY_STORED_PROJECT_FIELDS:
+                legacy_errors.append(
+                    f"{item.get('id') if isinstance(item, dict) else 'unknown'} "
+                    "不符合旧项目引用合同"
+                )
+        if legacy_errors:
+            fail("迁移前校验失败：" + "；".join(legacy_errors))
+
+        catalog = discover_projects()
+        if not catalog.complete:
+            fail("Project Catalog 扫描不完整，拒绝迁移")
+        missing = [
+            item.get("project_key")
+            for item in legacy_projects.get("projects", [])
+            if item.get("project_key") not in catalog.by_key
+        ]
+        if missing:
+            fail(
+                "以下已跟踪项目未在当前 Project Catalog 中唯一解析："
+                + "、".join(sorted(set(str(value) for value in missing)))
+            )
+        timestamp = iso_now()
+        migrated_projects = {
+            "schema_version": PROJECTS_SCHEMA_VERSION,
+            "updated_at": timestamp,
+            "projects": [
+                {
+                    key: item.get(key)
+                    for key in (
+                        "id", "project_key", "tracking_state", "status_reason",
+                        "created_at", "updated_at",
+                    )
+                }
+                for item in legacy_projects.get("projects", [])
+            ],
+        }
+        desired = [migrated_projects, *raw[1:]]
+        events = read_events()
+        event = make_event(
+            events,
+            args,
+            "project_catalog_migrated",
+            "项目跟踪关系迁移到动态 Project Catalog",
+            sources=args.source,
+        )
+        errors = current_data_errors(*desired, [*events, event])
+        errors.extend(project_registry_errors(migrated_projects))
+        if errors:
+            fail("迁移结果校验失败：" + "；".join(errors))
+        hydrated = hydrate_projects_data(migrated_projects, catalog)
+        views = current_view_contents(hydrated, *raw[1:])
+
+        backup_dir = DATA_DIR / "backups" / (
+            "project-catalog-" + now().strftime("%Y%m%dT%H%M%S%f")
+        )
+        _ensure_private_directory(backup_dir.parent)
+        backup_dir.mkdir(mode=DIR_MODE, exist_ok=False)
+        for path in managed_runtime_paths():
+            if path.exists():
+                shutil.copy2(path, backup_dir / path.name)
+                (backup_dir / path.name).chmod(FILE_MODE)
+        atomic_write_json(
+            backup_dir / "manifest.json",
+            {
+                "schema_version": 1,
+                "operation": "lifeos-project-catalog-migration",
+                "created_at": timestamp,
+                "source_runtime": str(DATA_DIR),
+            },
+        )
+
+        affected = [PROJECTS_PATH, EVENTS_PATH, *views.keys()]
+        try:
+            recovery_dir, snapshots = _create_transaction_recovery(
+                affected, ("projects",), event
+            )
+        except Exception as exc:
+            fail(f"迁移写入前快照创建失败，未修改 Runtime：{exc}")
+        try:
+            atomic_write_json(PROJECTS_PATH, migrated_projects)
+            for path, content in views.items():
+                atomic_write_text(path, content)
+            append_event(event)
+            if read_json(PROJECTS_PATH) != migrated_projects:
+                raise RuntimeError("projects.json 回读不一致")
+        except Exception as exc:
+            try:
+                _restore_transaction_snapshot(snapshots)
+                shutil.rmtree(recovery_dir)
+            except Exception as rollback_exc:
+                fail(
+                    f"迁移失败且自动恢复未完成：{exc}；{rollback_exc}；"
+                    f"恢复快照：{recovery_dir}"
+                )
+            fail(f"迁移失败，已恢复迁移前状态：{exc}")
+        try:
+            shutil.rmtree(recovery_dir)
+        except Exception as exc:
+            fail(
+                "迁移已完成，但事务恢复标记清理失败；"
+                f"请核验后处理：{recovery_dir}；错误：{exc}"
+            )
+    print(f"{event['event_id']} 项目跟踪关系迁移完成；备份：{backup_dir}")
 
 
 __all__ = [
@@ -657,6 +800,7 @@ __all__ = [
     "atomic_write_text",
     "command_refresh",
     "command_init",
+    "command_migrate_project_catalog",
     "command_validate",
     "current_runtime_active",
     "current_view_contents",

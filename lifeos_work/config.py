@@ -78,6 +78,15 @@ VALUE_TYPES = {
 }
 
 CURRENT_SCHEMA_VERSION = 1
+PROJECTS_SCHEMA_VERSION = 2
+CURRENT_SCHEMA_VERSIONS = {
+    "projects.json": PROJECTS_SCHEMA_VERSION,
+    "work-items.json": CURRENT_SCHEMA_VERSION,
+    "tasks.json": CURRENT_SCHEMA_VERSION,
+    "glossary.json": CURRENT_SCHEMA_VERSION,
+    "ideas.json": CURRENT_SCHEMA_VERSION,
+    "achievements.json": CURRENT_SCHEMA_VERSION,
+}
 CURRENT_TOP_LEVEL_FIELDS = {
     "projects.json": {"schema_version", "updated_at", "projects"},
     "work-items.json": {"schema_version", "updated_at", "work_items"},
@@ -88,7 +97,7 @@ CURRENT_TOP_LEVEL_FIELDS = {
 }
 CURRENT_OBJECT_FIELDS = {
     "项目引用": {
-        "id", "project_key", "manifest_path", "tracking_state",
+        "id", "project_key", "tracking_state",
         "status_reason", "created_at", "updated_at",
     },
     "事项": {

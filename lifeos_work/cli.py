@@ -27,7 +27,12 @@ from .model import (
     validate_nonempty_text,
     validate_quarter,
 )
-from .runtime import command_init, command_refresh, command_validate
+from .runtime import (
+    command_init,
+    command_migrate_project_catalog,
+    command_refresh,
+    command_validate,
+)
 from .commands.achievements import (
     command_achievement_add,
     command_achievement_archive,
@@ -37,7 +42,7 @@ from .commands.achievements import (
 )
 from .commands.glossary import command_glossary, command_term_add, command_term_update
 from .commands.ideas import command_idea_add, command_idea_update, command_ideas
-from .commands.projects import command_project_add, command_project_update, command_projects
+from .commands.projects import command_project_track, command_project_update, command_projects
 from .commands.reporting import (
     command_brief,
     command_changes,
@@ -90,21 +95,22 @@ WORK_EPILOG = """查询与写入约定：
 
 QUERY_EPILOG = "只读命令：不会修改事实源、events.jsonl 或派生视图。"
 WRITE_EPILOG = "写入命令：会校验当前 Runtime，更新对应事实源，刷新派生视图并追加一条不可变事件；提供 --source 记录依据，重试请使用稳定的 --idempotency-key。"
-INIT_EPILOG = "初始化只创建全新的 Schema 1 Work Runtime，不导入或覆盖任何旧数据；已有任一 Work 文件时立即停止。"
+INIT_EPILOG = "初始化只创建全新的当前 Work Runtime，不导入或覆盖任何旧数据；已有任一 Work 文件时立即停止。"
 DATE_EPILOG = "日期语义：--due 只表示结果硬截止；里程碑目标日期由事项 target_at 承担。"
 MILESTONE_EPILOG = "里程碑边界：completed 必须同时具备 --summary、--completion-source 和 --decision；decision=continue/adjust 时还必须用 --activate-next 指向同一事项的 planned 里程碑。"
 
 
 COMMAND_DESCRIPTIONS = {
-    "init": "创建全新的 Schema 1 Work Runtime，并建立唯一的 ENT-SELF 本人实体；不读取或迁移既有 Runtime。",
+    "init": "创建全新的当前 Work Runtime，并建立唯一的 ENT-SELF 本人实体；不读取或迁移既有 Runtime。",
     "now": "只读当前工作视图，按当前有效事实展示需要关注的项目、事项和待办。",
     "brief": (
         "只读聊天窗口简报。current 展示当前前瞻；reminder 展示通用提醒；"
         "closeout 展示 18:00 收口。"
     ),
     "projects": "只读项目引用列表；无过滤参数时返回全部项目引用。",
-    "project-add": "注册项目根 lifeos-project.json；Runtime 只保存清单路径和 LifeOS 跟踪状态。",
-    "project-update": "更新已有项目引用；改变 tracking-state 为 paused 或 archived 时必须同时提供 --reason。",
+    "project-track": "按 Project Catalog 中唯一有效的 project_key 建立个人跟踪关系。",
+    "project-update": "更新已有项目引用的跟踪状态；paused 或 archived 必须同时提供 --reason。",
+    "migrate-project-catalog": "一次性把旧项目路径注册迁移为 project_key 跟踪覆盖层。",
     "work-items": "只读事项列表；无过滤参数时查询集合为全部事项；人类可读视图默认隐藏 closed，需看完整记录时使用 --json。",
     "work-item-milestones": "只读指定事项的里程碑列表；事项 ID 必须是 WI-*。",
     "work-item-milestone-add": "为事项新增 planned 或 current 里程碑。新增里程碑会让路线事项的下一门槛由 current 里程碑派生。",
@@ -135,7 +141,7 @@ COMMAND_DESCRIPTIONS = {
     "review": "只读生成一个月度、季度或半年度成果复盘；必须显式指定一个周期，不会写日报或改变 Work 事实。",
     "changes": "只读读取不可变变更记录；无时间窗默认返回最近 20 条，提供时间窗时默认返回窗口内全部事件。",
     "refresh": "重建当前派生 Markdown 视图；不改变事实 JSON 或 events.jsonl。",
-    "validate": "只读校验 Schema 1 事实源、项目清单、不可变变更记录和派生视图的一致性。",
+    "validate": "只读校验当前事实源、项目跟踪关系、不可变变更记录和派生视图的一致性。",
 }
 
 
@@ -144,8 +150,9 @@ COMMAND_SUMMARIES = {
     "now": "显示当前工作视图（只读）",
     "brief": "生成聊天窗口简报（只读）",
     "projects": "列出项目引用（无过滤时全量）",
-    "project-add": "注册项目引用（写入）",
+    "project-track": "跟踪已发现项目（写入）",
     "project-update": "更新项目引用（写入）",
+    "migrate-project-catalog": "迁移项目跟踪关系（写入）",
     "work-items": "列出事项（无过滤时全量）",
     "work-item-milestones": "列出事项里程碑（只读）",
     "work-item-milestone-add": "新增事项里程碑（写入）",
@@ -308,7 +315,7 @@ def _annotate_work_parsers(commands):
         "json": "以 JSON 输出，不改变查询范围。",
         "query": "可选查询文本；省略时不按文本过滤。",
         "project": "按项目名称或 ID 筛选；省略时不按项目过滤。",
-        "manifest": "项目目录或 lifeos-project.json 的绝对/相对路径。",
+        "project_key": "Project Catalog 中的稳定项目键。",
         "tracking_state": "LifeOS 跟踪状态；paused/archived 需要 --reason。",
         "state": "事项状态；waiting、needs_confirmation、paused、closed 需要 --reason。",
         "status": "记录状态；进入 waiting、paused、cancelled 或归档状态需提供 --reason。",
@@ -471,7 +478,7 @@ def _annotate_work_parsers(commands):
                 "tracking_state",
                 "按 active/paused/archived 过滤；省略时返回全部项目引用。",
             )
-        elif name == "project-add":
+        elif name == "project-track":
             _set_action_help(
                 command,
                 "tracking_state",
@@ -631,8 +638,8 @@ def build_parser(version):
     command.add_argument("--json", action="store_true")
     command.set_defaults(handler=command_projects)
 
-    command = commands.add_parser("project-add", help="注册项目引用")
-    command.add_argument("--manifest", required=True)
+    command = commands.add_parser("project-track", help="跟踪已发现项目")
+    command.add_argument("--project-key", required=True)
     command.add_argument(
         "--tracking-state",
         choices=sorted(PROJECT_TRACKING_STATES),
@@ -641,11 +648,10 @@ def build_parser(version):
     command.add_argument("--reason")
     add_source_argument(command, required=True)
     add_actor_arguments(command)
-    command.set_defaults(handler=command_project_add)
+    command.set_defaults(handler=command_project_track)
 
     command = commands.add_parser("project-update", help="更新项目引用")
     command.add_argument("id")
-    command.add_argument("--manifest")
     command.add_argument(
         "--tracking-state", choices=sorted(PROJECT_TRACKING_STATES)
     )
@@ -653,6 +659,14 @@ def build_parser(version):
     add_source_argument(command)
     add_actor_arguments(command)
     command.set_defaults(handler=command_project_update)
+
+    command = commands.add_parser(
+        "migrate-project-catalog",
+        help="迁移旧项目路径注册",
+    )
+    add_source_argument(command, required=True)
+    add_actor_arguments(command, include_idempotency=False)
+    command.set_defaults(handler=command_migrate_project_catalog)
 
     command = commands.add_parser("work-items", help="显示事项")
     command.add_argument("--state", choices=sorted(WORK_ITEM_STATES))

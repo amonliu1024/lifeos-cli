@@ -8,7 +8,7 @@ import unittest
 from datetime import datetime
 from pathlib import Path
 
-from lifeos_config.core import configure_dchat, load_config
+from lifeos_config.core import configure_dchat, default_payload, load_config
 from lifeos_dchat.client import DChatClientError, DwsDChatAdapter
 from lifeos_dchat.core import DChatService, TimeWindow
 from lifeos_dchat.evidence import build_index, build_pack
@@ -420,7 +420,6 @@ class DChatCLITest(unittest.TestCase):
             encoding="utf-8",
         )
         self.data_dir.mkdir(parents=True)
-        registered = []
         for index, key in enumerate(("alpha", "beta"), start=1):
             project_root = Path(self.temporary.name) / key
             project_root.mkdir()
@@ -437,20 +436,11 @@ class DChatCLITest(unittest.TestCase):
                     "description": "合成项目群",
                 }]}, "cooper": {"resources": []}},
             }), encoding="utf-8")
-            registered.append({
-                "id": f"PRJ-TEST-{index:03d}",
-                "project_key": key,
-                "manifest_path": str(manifest),
-                "tracking_state": "active",
-                "status_reason": None,
-                "created_at": "2026-08-27T00:00:00+08:00",
-                "updated_at": "2026-08-27T00:00:00+08:00",
-            })
-        (self.data_dir / "projects.json").write_text(json.dumps({
-            "schema_version": 1,
-            "updated_at": "2026-08-27T00:00:00+08:00",
-            "projects": registered,
-        }), encoding="utf-8")
+        config = default_payload()
+        config["modules"]["projects"]["roots"] = [str(Path(self.temporary.name))]
+        Path(self.environment["LIFEOS_CONFIG"]).write_text(
+            json.dumps(config), encoding="utf-8"
+        )
 
     def tearDown(self):
         self.temporary.cleanup()

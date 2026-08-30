@@ -101,13 +101,15 @@ def command_index(args: Any) -> None:
         window = _window(args)
         start, end = window.query_bounds()
         display_window = window.to_dict()
+        project_map = _project_map(args)
         payload = build_index(
             _store(args), start, end, args.conversation,
             source_window=(display_window["from"], display_window["to"]),
             project_rows=_project_rows(args),
         )
         payload["window"] = display_window
-    except (DChatError, DChatStoreError, ProjectManifestError, ValueError) as exc:
+        payload["project_catalog"] = project_map.to_dict()["catalog"]
+    except (ConfigError, DChatError, DChatStoreError, ProjectManifestError, ValueError) as exc:
         _fail(str(exc))
     _emit(args, payload, [
         f"DChat supporting evidence · 会话 {payload['summary']['conversations']} · 消息 {payload['summary']['messages']}"
@@ -136,7 +138,7 @@ def command_projects_list(args: Any) -> None:
         rows = _project_rows(args)
         if args.conversation:
             rows = [row for row in rows if row["conversation_id"] == args.conversation]
-    except (ProjectManifestError, ValueError) as exc:
+    except (ConfigError, ProjectManifestError, ValueError) as exc:
         _fail(str(exc))
     _emit(args, {"projects": rows, "total": len(rows)}, [
         f"{row['conversation_id']} · {'、'.join(row['projects']) or '空集合'}" for row in rows
@@ -152,7 +154,11 @@ def command_usage(args: Any) -> None:
 def command_validate(args: Any) -> None:
     findings = []
     try:
-        _known_projects(args)
+        project_map = _project_map(args)
+        findings.extend({
+            "scope": "project_catalog",
+            "problem": item.get("message", "Project Catalog finding"),
+        } for item in project_map.catalog_findings if item.get("severity") == "error")
         try:
             config = load_config(allow_missing=False)
             if not config.dchat.enabled:
@@ -160,7 +166,7 @@ def command_validate(args: Any) -> None:
         except ConfigError as exc:
             findings.append({"scope": "config", "problem": str(exc)})
         findings.extend(_store(args).validate(None))
-    except (DChatStoreError, ProjectManifestError, ValueError) as exc:
+    except (ConfigError, DChatStoreError, ProjectManifestError, ValueError) as exc:
         _fail(str(exc))
     payload = {"ok": not findings, "findings": findings}
     _emit(args, payload, ["DChat evidence 校验通过。"] if not findings else [

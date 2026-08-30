@@ -8,6 +8,7 @@ import tempfile
 import unittest
 from pathlib import Path
 
+from lifeos_config.core import default_payload
 from lifeos_sessions.core import SourceScanRequest, TimeWindow
 from lifeos_sessions.smartwork import SmartworkAdapter
 
@@ -272,10 +273,10 @@ class SessionsCLIIntegrationTest(unittest.TestCase):
         self.runtime = self.root / "runtime"
         self.home.mkdir()
         self.runtime.mkdir()
-        (self.runtime / "projects.json").write_text(
-            '{"schema_version":1,"updated_at":"2026-08-27T00:00:00+08:00","projects":[]}\n',
-            encoding="utf-8",
-        )
+        self.config_path = self.root / "config.json"
+        config = default_payload()
+        config["modules"]["projects"]["roots"] = [str(self.root)]
+        self.config_path.write_text(json.dumps(config), encoding="utf-8")
         codex_fixture = Path(__file__).parent / "fixtures" / "sessions" / "codex"
         shutil.copytree(codex_fixture, self.home / ".codex")
         claude_fixture = Path(__file__).parent / "fixtures" / "sessions" / "claude" / "projects"
@@ -287,6 +288,7 @@ class SessionsCLIIntegrationTest(unittest.TestCase):
             **os.environ,
             "HOME": str(self.home),
             "LIFEOS_HOME": str(self.runtime),
+            "LIFEOS_CONFIG": str(self.config_path),
             "PYTHONPYCACHEPREFIX": str(self.root / "pycache"),
         }
 
@@ -393,7 +395,7 @@ class SessionsCLIIntegrationTest(unittest.TestCase):
         self.assertEqual([], json.loads(scans.stdout))
         self.assertNotIn("Traceback", listed.stderr)
 
-    def test_projects_are_derived_read_only_from_registered_manifest(self):
+    def test_projects_are_derived_read_only_from_discovered_manifest(self):
         project_root = self.root / "space-workplace-management-system"
         project_root.mkdir()
         manifest = project_root / "lifeos-project.json"
@@ -405,24 +407,10 @@ class SessionsCLIIntegrationTest(unittest.TestCase):
             "scope": "project",
             "sources": {"dchat": {"groups": []}, "cooper": {"resources": []}},
         }, ensure_ascii=False), encoding="utf-8")
-        (self.runtime / "projects.json").write_text(json.dumps({
-            "schema_version": 1,
-            "updated_at": "2026-08-27T00:00:00+08:00",
-            "projects": [{
-                "id": "PRJ-TEST-001",
-                "project_key": "space-workplace-management-system",
-                "manifest_path": str(manifest),
-                "tracking_state": "active",
-                "status_reason": None,
-                "created_at": "2026-08-27T00:00:00+08:00",
-                "updated_at": "2026-08-27T00:00:00+08:00",
-            }],
-        }, ensure_ascii=False), encoding="utf-8")
-
         result = self.run_cli("projects", "--json")
         self.assertEqual(0, result.returncode, result.stderr)
         payload = json.loads(result.stdout)
-        self.assertEqual("work/lifeos-project.json", payload["authority"])
+        self.assertEqual("project-catalog/lifeos-project.json", payload["authority"])
         self.assertEqual(str(project_root), payload["projects"][0]["roots"][0])
         removed = self.run_cli("projects", "add", "--key", "another", "--root", "/another")
         self.assertEqual(2, removed.returncode)

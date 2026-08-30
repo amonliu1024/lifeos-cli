@@ -18,6 +18,7 @@ from .config import (
     CURRENT_OBJECT_FIELDS,
     CURRENT_RESPONSIBLE_PARTY_FIELDS,
     CURRENT_SCHEMA_VERSION,
+    CURRENT_SCHEMA_VERSIONS,
     CURRENT_SOURCE_FIELDS,
     CURRENT_TOP_LEVEL_FIELDS,
     CURRENT_VALUE_FIELDS,
@@ -51,9 +52,10 @@ def current_data_errors(
     ideas_data,
     achievements_data,
     events,
-    expected_schema_version=CURRENT_SCHEMA_VERSION,
+    expected_schema_versions=None,
 ):
     errors = []
+    expected_versions = expected_schema_versions or CURRENT_SCHEMA_VERSIONS
     collections = [
         ("projects.json", projects_data, "projects"),
         ("work-items.json", work_items_data, "work_items"),
@@ -66,8 +68,9 @@ def current_data_errors(
         if not isinstance(data, dict):
             errors.append(f"{filename} 必须为对象")
             continue
-        if data.get("schema_version") != expected_schema_version:
-            errors.append(f"{filename} schema_version 必须为 {expected_schema_version}")
+        expected_version = expected_versions[filename]
+        if data.get("schema_version") != expected_version:
+            errors.append(f"{filename} schema_version 必须为 {expected_version}")
         unknown = sorted(set(data) - CURRENT_TOP_LEVEL_FIELDS[filename])
         if unknown:
             errors.append(f"{filename} 包含非当前字段：{', '.join(unknown)}")
@@ -148,8 +151,8 @@ def current_data_errors(
         item_id = project.get("id")
         if not item_id or not re.fullmatch(r"PRJ-\d{8}-\d{3}", item_id):
             errors.append(f"项目引用 ID 格式非法：{item_id}")
-        if not project.get("project_key") or not project.get("manifest_path"):
-            errors.append(f"{item_id} 缺少 project_key 或 manifest_path")
+        if not project.get("project_key"):
+            errors.append(f"{item_id} 缺少 project_key")
         if project.get("tracking_state") not in PROJECT_TRACKING_STATES:
             errors.append(f"{item_id} 跟踪状态非法")
         if project.get("tracking_state") in {"paused", "archived"} and not project.get("status_reason"):

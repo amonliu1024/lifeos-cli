@@ -10,7 +10,7 @@ LifeOS 是一套本地优先的命令行系统，用来管理个人工作事实�
 
 - `lifeos work`：管理项目、事项、里程碑、待办、闪念、术语和可复用成果胶囊。
 - `lifeos reports`：管理私有日报的路径、frontmatter、草稿写入、确认状态和校验。
-- `lifeos project`：校验可移植的 `lifeos-project.json`。
+- `lifeos project`：校验清单，并动态发现配置根中的 `lifeos-project.json`。
 - `lifeos sessions`：通过只读适配器采集本机支持的 Agent 会话来源。
 - `lifeos git`：采集本地提交证据并保存私有扫描快照，全程不访问远端。
 - `lifeos dchat`：按需启用 DChat 辅助证据，通过显式配置的本地 wrapper 工作。
@@ -62,6 +62,10 @@ lifeos capabilities
     },
     "project_sources": {
       "enabled": ["dchat", "cooper"]
+    },
+    "projects": {
+      "roots": [],
+      "exclude": [".git", ".venv", "archive", "node_modules"]
     }
   }
 }
@@ -69,9 +73,21 @@ lifeos capabilities
 
 模块和来源适配器来自经过代码审查的静态注册表。配置只能启用或停用内置能力，不能要求 LifeOS 从配置中导入任意 Python 模块。
 
+项目位置不逐个写入 Runtime。使用公共命令维护一个或多个发现根：
+
+```bash
+lifeos config project-root add /absolute/path/to/projects
+lifeos config project-root list
+lifeos project discover
+lifeos project validate --all
+```
+
+发现不跟随符号链接，并跳过配置中的排除目录。新清单会在下一次完整发现中出现；同一 `project_key` 同时存在于多个路径时全部隔离，等待人工裁决。
+
 | 能力 | 默认状态 | 就绪条件 |
 | --- | --- | --- |
-| Work、Project、Reports | 启用 | 内置能力 |
+| Work、Reports | 启用 | 内置能力 |
+| Project Catalog | 未配置 | 至少一个可读的项目发现根 |
 | Git 证据 | 启用 | 本机可使用 `git` |
 | Sessions 来源 | 启用 | 已配置的来源目录存在 |
 | DChat 证据 | 禁用 | 已启用，并配置存在的本地 wrapper 和 tag ID |
@@ -152,9 +168,10 @@ lifeos work task-reschedule --help
 
 ```bash
 lifeos project validate /path/to/project
-lifeos work project-add \
-  --manifest /path/to/project \
-  --source "已确认的项目注册"
+lifeos project discover
+lifeos work project-track \
+  --project-key example-project \
+  --source "本人确认纳入个人跟踪"
 ```
 
 每种来源的字段由对应适配器负责；未知适配器和未知字段会被拒绝。
@@ -163,13 +180,13 @@ lifeos work project-add \
 
 Work 对象沿着“项目引用 → 事项 → 里程碑 → 待办”组织，`events.jsonl` 只保存追加式审计证据，不是第二套用户对象。
 
-- **项目引用**只登记项目清单路径、个人跟踪状态、原因和时间戳；产品计划、交付状态与正式材料仍由项目自身维护。
+- **项目引用**只登记 `project_key`、个人跟踪状态、原因和时间戳；当前名称、来源和目录从动态 Project Catalog 补全。清单被发现不等于自动创建个人跟踪关系。
 - **事项**承载单个动作无法表达的结果主线。轻量事项可以直接保存最近门槛，不建立里程碑；路线事项必须只有一个当前里程碑，未来阶段保持计划状态。
 - **待办**是执行层可关闭的可验证结果。它区分当前行动、结果硬截止和实际开始事件；关联事项后继承其项目，路线事项中的未完成待办只属于当前里程碑。
 - **闪念**承载尚未形成承诺的输入，只有指向本人已确认的事项或待办时才算完成提升。
 - **成果胶囊**保存可复用结果、经验与来源，可以关联已完成待办，但不参与责任、日期和提醒。
 
-责任方必须是真实确认的本人、个人或组织；缺失时保持未知，不从上下文猜测。等待、暂停、取消、关闭、归档和替换按命令契约保留原因，历史审计事件不会为了适配新的当前 Schema 而被改写。
+责任方必须是真实确认的本人、个人或组织；缺失时保持未知，不从上下文猜测。等待、暂停、取消、关闭、归档和替换按命令契约保留原因，历史审计事件不会为了适配新的当前 Schema 而被改写。旧版项目路径注册通过一次性 `lifeos work migrate-project-catalog` 在完整发现和备份后迁移；普通读取不长期双读旧记录。
 
 基础列表在没有显式过滤条件时返回全部记录；`brief --mode current`、`reminder` 和 `closeout` 分别是当前工作、提醒和日终收口的原生视图。精确字段、状态和写入参数以相应命令的 `--help`、代码及测试为准。
 
@@ -229,7 +246,7 @@ lifeos reports validate
 
 ## v1 基线
 
-所有公开 JSON 合同和持久化数据从 Schema 1 开始。CLI 不读取、不迁移也不覆盖任何公开前 Runtime、配置或项目清单；已有本地数据时，请保留原目录并使用新的 `LIFEOS_HOME` / `LIFEOS_CONFIG` 初始化 v1。切换真实个人 Runtime 是独立的数据操作，不由安装、提交或 Tag 自动完成。
+所有公开 JSON 合同和持久化数据从 Schema 1 开始。当前项目跟踪事实源使用 Schema 2，并只通过 `migrate-project-catalog` 从已发布的项目 Schema 1 原子迁移；这不构成对任何公开前 Runtime 的读取或兼容。其他公开前数据仍不读取、不迁移或覆盖。切换真实个人 Runtime 是独立的数据操作，不由安装、提交或 Tag 自动完成。
 
 本仓库只保留当前实现与发布合同，不建立 `archive/`。退出当前职责但仍有追溯价值的项目材料由仓库之外的 Project Workspace 统一归档。
 

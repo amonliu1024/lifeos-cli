@@ -39,6 +39,28 @@ def capability_report(config: LifeOSConfig) -> dict[str, Any]:
     else:
         dchat = _status("unavailable", "dws_wrapper_missing")
 
+    missing_project_roots = [
+        root for root in config.project_roots if not Path(root).is_dir()
+    ]
+    if not config.project_roots:
+        projects = {
+            **_status("unconfigured", "no_discovery_roots"),
+            "roots": [],
+            "missing_roots": [],
+        }
+    elif missing_project_roots:
+        projects = {
+            **_status("unavailable", "discovery_root_missing"),
+            "roots": list(config.project_roots),
+            "missing_roots": missing_project_roots,
+        }
+    else:
+        projects = {
+            **_status("ready", "discovery_roots_available"),
+            "roots": list(config.project_roots),
+            "missing_roots": [],
+        }
+
     return {
         "config": {
             "path": str(config.path),
@@ -46,7 +68,7 @@ def capability_report(config: LifeOSConfig) -> dict[str, Any]:
         },
         "modules": {
             "work": _status("ready", "built_in"),
-            "project": _status("ready", "built_in"),
+            "project": projects,
             "reports": _status("ready", "built_in"),
             "git": _status(
                 "ready" if shutil.which("git") else "unavailable",

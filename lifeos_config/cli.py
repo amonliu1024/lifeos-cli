@@ -10,6 +10,7 @@ from typing import Any
 from .capabilities import capability_report
 from .core import (
     ConfigError,
+    configure_project_root,
     initialize_config,
     load_config,
 )
@@ -72,6 +73,33 @@ def command_capabilities(args: Any) -> None:
             print(f"{name}: {value['status']} ({value['reason']})")
 
 
+def command_project_root(args: Any) -> None:
+    try:
+        if args.project_root_command == "list":
+            config = load_config()
+            payload = {
+                "roots": list(config.project_roots),
+                "exclude": list(config.project_excludes),
+                "path": str(config.path),
+            }
+        else:
+            payload = configure_project_root(args.project_root_command, args.path)
+    except ConfigError as exc:
+        print(f"lifeos: {exc}", file=sys.stderr)
+        raise SystemExit(1)
+    if args.json:
+        _emit(payload, True)
+        return
+    if args.project_root_command == "list":
+        if not payload["roots"]:
+            print("没有已配置的项目发现根。")
+        for root in payload["roots"]:
+            print(root)
+        return
+    status = "已更新" if payload["changed"] else "未变化"
+    print(f"项目发现根{status}：{payload['root']}")
+
+
 def register_config_parser(domains: argparse._SubParsersAction) -> None:
     config = domains.add_parser("config", help="初始化并校验 Git 外私人配置")
     commands = config.add_subparsers(dest="command", required=True)
@@ -81,6 +109,21 @@ def register_config_parser(domains: argparse._SubParsersAction) -> None:
     command = commands.add_parser("validate", help="校验私人配置")
     command.add_argument("--json", action="store_true")
     command.set_defaults(handler=command_config_validate)
+    project_root = commands.add_parser("project-root", help="维护项目动态发现根")
+    project_commands = project_root.add_subparsers(
+        dest="project_root_command", required=True
+    )
+    for name, help_text in (
+        ("add", "增加项目发现根"),
+        ("remove", "移除项目发现根"),
+    ):
+        command = project_commands.add_parser(name, help=help_text)
+        command.add_argument("path")
+        command.add_argument("--json", action="store_true")
+        command.set_defaults(handler=command_project_root)
+    command = project_commands.add_parser("list", help="列出项目发现根")
+    command.add_argument("--json", action="store_true")
+    command.set_defaults(handler=command_project_root)
 
 
 def register_capabilities_parser(domains: argparse._SubParsersAction) -> None:

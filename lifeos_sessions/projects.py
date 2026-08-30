@@ -12,9 +12,9 @@ Two kinds of rule live here and they are deliberately not equal:
 belongs to its project, a subdirectory belongs to its root, a scratch chat
 directory is not a project.  Those are applied automatically.
 
-*Identity* rules come from the currently registered ``lifeos-project.json``
-manifests. Sessions consumes the derived roots in memory and does not own a
-second project map or any project identity mutation path.
+*Identity* rules come from ``lifeos-project.json`` manifests dynamically found
+under the configured project roots. Sessions consumes the derived roots in
+memory and does not own a second project map or any project mutation path.
 """
 
 from __future__ import annotations
@@ -99,6 +99,8 @@ class ProjectMap:
     projects: List[Dict[str, Any]] = field(default_factory=list)
     ad_hoc_roots: List[str] = field(default_factory=lambda: list(DEFAULT_AD_HOC_ROOTS))
     worktree_roots: List[str] = field(default_factory=lambda: list(DEFAULT_WORKTREE_ROOTS))
+    catalog_complete: bool = True
+    catalog_findings: List[Dict[str, Any]] = field(default_factory=list)
     @classmethod
     def default(cls) -> "ProjectMap":
         return cls()
@@ -144,10 +146,13 @@ class ProjectMap:
                 claimed[folded] = entry["key"]
         ad_hoc = payload.get("ad_hoc_roots")
         worktrees = payload.get("worktree_roots")
+        catalog = payload.get("catalog") or {}
         return cls(
             projects=projects,
             ad_hoc_roots=[normalize_path(v) for v in ad_hoc] if ad_hoc is not None else list(DEFAULT_AD_HOC_ROOTS),
             worktree_roots=[normalize_path(v) for v in worktrees] if worktrees is not None else list(DEFAULT_WORKTREE_ROOTS),
+            catalog_complete=bool(catalog.get("complete", True)),
+            catalog_findings=[dict(item) for item in catalog.get("findings", [])],
         )
 
     def to_dict(self) -> Dict[str, Any]:
@@ -159,6 +164,10 @@ class ProjectMap:
             ],
             "ad_hoc_roots": list(self.ad_hoc_roots),
             "worktree_roots": list(self.worktree_roots),
+            "catalog": {
+                "complete": self.catalog_complete,
+                "findings": [dict(item) for item in self.catalog_findings],
+            },
         }
 
     # -- resolution ---------------------------------------------------------

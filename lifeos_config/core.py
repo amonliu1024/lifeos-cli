@@ -16,6 +16,7 @@ from zoneinfo import ZoneInfo, ZoneInfoNotFoundError
 CONFIG_SCHEMA_VERSION = 1
 SUPPORTED_SESSION_SOURCES = ("codex", "claude", "smartwork", "deepseek")
 SUPPORTED_PROJECT_SOURCES = ("dchat", "cooper")
+DEFAULT_PROJECT_EXCLUDES = (".git", ".venv", "archive", "node_modules")
 
 
 class ConfigError(ValueError):
@@ -37,6 +38,8 @@ class LifeOSConfig:
     dchat: DChatConfig
     session_sources: tuple[str, ...]
     project_sources: tuple[str, ...]
+    project_roots: tuple[str, ...]
+    project_excludes: tuple[str, ...]
 
 
 def resolve_config_path(value: Optional[str | os.PathLike[str]] = None) -> Path:
@@ -60,6 +63,10 @@ def default_payload() -> dict[str, Any]:
             },
             "sessions": {"sources": list(SUPPORTED_SESSION_SOURCES)},
             "project_sources": {"enabled": ["dchat", "cooper"]},
+            "projects": {
+                "roots": [],
+                "exclude": list(DEFAULT_PROJECT_EXCLUDES),
+            },
         },
     }
 
@@ -97,6 +104,36 @@ def _names(value: Any, label: str, allowed: tuple[str, ...]) -> tuple[str, ...]:
     return tuple(value)
 
 
+def _project_roots(value: Any) -> tuple[str, ...]:
+    if not isinstance(value, list) or any(not isinstance(item, str) for item in value):
+        raise ConfigError("modules.projects.roots 必须是字符串数组")
+    roots = []
+    for item in value:
+        path = Path(item).expanduser()
+        if not path.is_absolute():
+            raise ConfigError("modules.projects.roots 必须全部使用绝对路径")
+        normalized = str(path.absolute())
+        if normalized not in roots:
+            roots.append(normalized)
+    if len(roots) != len(value):
+        raise ConfigError("modules.projects.roots 不得包含重复值")
+    return tuple(roots)
+
+
+def _project_excludes(value: Any) -> tuple[str, ...]:
+    if not isinstance(value, list) or any(not isinstance(item, str) for item in value):
+        raise ConfigError("modules.projects.exclude 必须是字符串数组")
+    result = []
+    for item in value:
+        name = item.strip()
+        if not name or Path(name).is_absolute() or "/" in name or name in {".", ".."}:
+            raise ConfigError("modules.projects.exclude 只能包含相对目录名")
+        if name in result:
+            raise ConfigError("modules.projects.exclude 不得包含重复值")
+        result.append(name)
+    return tuple(result)
+
+
 def normalize_config(payload: Any, path: Path, *, exists: bool) -> LifeOSConfig:
     root = _object(
         payload,
@@ -118,7 +155,7 @@ def normalize_config(payload: Any, path: Path, *, exists: bool) -> LifeOSConfig:
     modules = _object(
         root.get("modules"),
         "modules",
-        {"dchat", "sessions", "project_sources"},
+        {"dchat", "sessions", "project_sources", "projects"},
         {"dchat", "sessions", "project_sources"},
     )
     dchat = _object(
@@ -149,6 +186,16 @@ def normalize_config(payload: Any, path: Path, *, exists: bool) -> LifeOSConfig:
         {"enabled"},
         {"enabled"},
     )
+    projects_value = modules.get("projects") or {
+        "roots": [],
+        "exclude": list(DEFAULT_PROJECT_EXCLUDES),
+    }
+    projects = _object(
+        projects_value,
+        "modules.projects",
+        {"roots", "exclude"},
+        {"roots", "exclude"},
+    )
     return LifeOSConfig(
         path=path,
         exists=exists,
@@ -164,6 +211,8 @@ def normalize_config(payload: Any, path: Path, *, exists: bool) -> LifeOSConfig:
             "modules.project_sources.enabled",
             SUPPORTED_PROJECT_SOURCES,
         ),
+        project_roots=_project_roots(projects.get("roots")),
+        project_excludes=_project_excludes(projects.get("exclude")),
     )
 
 
@@ -288,15 +337,60 @@ def configure_dchat(
     return {"changed": changed, "configured": True, "path": str(path)}
 
 
+def configure_project_root(
+    action: str,
+    root: str | os.PathLike[str],
+    value: Optional[str | os.PathLike[str]] = None,
+) -> dict[str, Any]:
+    candidate = Path(root).expanduser().absolute()
+    if action == "add" and not candidate.is_dir():
+        raise ConfigError(f"项目发现根必须是存在的目录：{candidate}")
+    if action not in {"add", "remove"}:
+        raise ConfigError(f"未知项目发现根操作：{action}")
+    path = resolve_config_path(value)
+    with _locked_config(path):
+        payload = _payload_for_update(path)
+        modules = dict(payload["modules"])
+        current = dict(modules.get("projects") or {
+            "roots": [],
+            "exclude": list(DEFAULT_PROJECT_EXCLUDES),
+        })
+        roots = list(current.get("roots") or [])
+        normalized = str(candidate)
+        if action == "add":
+            changed = normalized not in roots
+            if changed:
+                roots.append(normalized)
+        else:
+            changed = normalized in roots
+            if changed:
+                roots.remove(normalized)
+        current["roots"] = roots
+        current.setdefault("exclude", list(DEFAULT_PROJECT_EXCLUDES))
+        modules["projects"] = current
+        payload["modules"] = modules
+        if changed or not path.exists():
+            _atomic_write_config(path, payload)
+    return {
+        "changed": changed,
+        "action": action,
+        "root": normalized,
+        "roots": roots,
+        "path": str(path),
+    }
+
+
 __all__ = [
     "CONFIG_SCHEMA_VERSION",
     "ConfigError",
+    "DEFAULT_PROJECT_EXCLUDES",
     "DChatConfig",
     "LifeOSConfig",
     "SUPPORTED_PROJECT_SOURCES",
     "SUPPORTED_SESSION_SOURCES",
     "default_payload",
     "configure_dchat",
+    "configure_project_root",
     "initialize_config",
     "load_config",
     "normalize_config",

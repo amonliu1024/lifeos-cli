@@ -8,6 +8,7 @@ import sys
 from pathlib import Path
 from typing import Any, Dict, List, Optional, Sequence
 
+from lifeos_config.core import ConfigError
 from lifeos_projects.manifest import ProjectManifestError
 from lifeos_projects.registry import project_map_payload
 from lifeos_sessions.projects import ProjectMap
@@ -36,7 +37,7 @@ def _store(args: Any) -> GitStore:
 def _project_map(args: Any) -> ProjectMap:
     try:
         return ProjectMap.from_dict(project_map_payload(args.data_dir))
-    except (ProjectManifestError, ValueError) as exc:
+    except (ConfigError, ProjectManifestError, ValueError) as exc:
         _fail(str(exc))
 
 
@@ -113,7 +114,9 @@ def command_scan(args: Any) -> None:
         window = GitWindow.from_values(args.from_value, args.to_value)
         store = _store(args)
         repositories = store.select_repositories(args.repo_keys or None)
-        manifest = GitScanner().scan(repositories, window, _project_map(args))
+        project_map = _project_map(args)
+        manifest = GitScanner().scan(repositories, window, project_map)
+        manifest["project_catalog"] = project_map.to_dict()["catalog"]
         payload = store.write_scan(manifest)
     except (GitEvidenceError, GitStoreError, ValueError) as exc:
         _fail(str(exc))
@@ -197,6 +200,11 @@ def command_validate(args: Any) -> None:
                 "scope": f"repo:{repository.key}",
                 "problem": str(exc),
             })
+    project_map = _project_map(args)
+    findings.extend({
+        "scope": "project_catalog",
+        "problem": item.get("message", "Project Catalog finding"),
+    } for item in project_map.catalog_findings if item.get("severity") == "error")
     payload = {"ok": not findings, "findings": findings}
     _emit(
         args,

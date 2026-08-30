@@ -7,6 +7,7 @@ import tempfile
 import unittest
 from pathlib import Path
 
+from lifeos_config.core import default_payload
 from lifeos_git.store import GitStore, GitStoreError
 
 
@@ -22,11 +23,10 @@ class GitCLITest(unittest.TestCase):
         self.repo_dir = Path(self.temporary_directory.name) / "checkout"
         self.environment = os.environ.copy()
         self.environment["LIFEOS_HOME"] = str(self.data_dir)
+        config_path = Path(self.temporary_directory.name) / "config.json"
+        config_path.write_text(json.dumps(default_payload()), encoding="utf-8")
+        self.environment["LIFEOS_CONFIG"] = str(config_path)
         self.data_dir.mkdir()
-        (self.data_dir / "projects.json").write_text(
-            '{"schema_version":1,"updated_at":"2026-08-27T00:00:00+08:00","projects":[]}\n',
-            encoding="utf-8",
-        )
         self.run_git("init", str(self.repo_dir))
         self.run_git("-C", str(self.repo_dir), "config", "user.name", "Synthetic User")
         self.run_git("-C", str(self.repo_dir), "config", "user.email", "synthetic@example.invalid")

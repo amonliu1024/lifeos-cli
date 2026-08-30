@@ -11,7 +11,7 @@ from .achievements import (
     command_achievement_update,
     command_achievements,
 )
-from .projects import command_project_add, command_project_update, command_projects
+from .projects import command_project_track, command_project_update, command_projects
 from .work_items import (
     command_work_item_add,
     command_work_item_milestone_add,
@@ -27,7 +27,7 @@ __all__ = [
     "command_achievement_supersede",
     "command_achievement_update",
     "command_achievements",
-    "command_project_add",
+    "command_project_track",
     "command_project_update",
     "command_projects",
     "command_work_item_add",

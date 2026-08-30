@@ -585,12 +585,12 @@ def render_projects(projects_data):
         "# 项目引用",
         "",
         f"> 更新：{display_iso_time(projects_data.get('updated_at'))}",
-        "> 这里只保存项目身份和事实源位置，不复制项目正文或真实阶段。",
+        "> Work 只保存个人跟踪关系；名称与当前目录由 Project Catalog 动态补全。",
         "",
     ]
     append_horizontal_rule(lines)
     if not projects:
-        lines += ["当前没有已注册项目。", ""]
+        lines += ["当前没有个人跟踪项目。", ""]
     for index, project in enumerate(
         sorted(projects, key=lambda value: value.get("id", ""))
     ):
@@ -862,7 +862,7 @@ def current_view_contents(
             render_now(projects_data, work_items_data, tasks_data),
         ),
         PROJECTS_VIEW_PATH: generated_view(
-            "projects.json", render_projects(projects_data)
+            "projects.json + Project Catalog", render_projects(projects_data)
         ),
         WORK_ITEMS_VIEW_PATH: generated_view(
             "work-items.json", render_work_items(work_items_data)

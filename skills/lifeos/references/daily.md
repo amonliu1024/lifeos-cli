@@ -21,6 +21,8 @@ lifeos reports begin --day <YYYY-MM-DD> --json
 
 ```bash
 lifeos sessions scans --from <window.from> --to <window.to> --json
+lifeos project discover --json
+lifeos project validate --all --json
 lifeos sessions validate --scan <scan-id>
 lifeos sessions scan --source all --from <window.from> --to <window.to> --json
 lifeos sessions index --from <window.from> --to <window.to> --json
@@ -34,7 +36,7 @@ lifeos dchat scan --from <window.from> --to <window.to> --json
 lifeos dchat index --from <window.from> --to <window.to> --json
 ```
 
-1. 先读 `sessions scans` 的精确窗口结果。只有记录的 `status=complete` 或 `status=partial`、`manifest_valid=true`、窗口完全相同，且 `codex`、`claude`、`smartwork`、`deepseek` 四个来源都存在且没有 `failed`，才算已有来源扫描；选中的记录还必须通过 `sessions validate --scan`。`partial` 表示本次扫描包含不完整 Slice 或来源警告，不等于没有采集结果；满足条件就复用，不重复扫描。
+1. 先运行完整 `project discover` 与 `project validate --all`，记录当前发现根、有效项目和 findings。新合法清单无需 Work 跟踪即可参与项目映射；单个非法或冲突项目只影响该项目，但如果可能改变日报主线归属则保留 Pending。随后读 `sessions scans` 的精确窗口结果。只有记录的 `status=complete` 或 `status=partial`、`manifest_valid=true`、窗口完全相同，且 `codex`、`claude`、`smartwork`、`deepseek` 四个来源都存在且没有 `failed`，才算已有来源扫描；选中的记录还必须通过 `sessions validate --scan`。`partial` 表示本次扫描包含不完整 Slice 或来源警告，不等于没有采集结果；满足条件就复用，不重复扫描。
 2. 没有可复用记录、来源缺失/failed 或校验失败时，执行一次目标窗口的 `sessions scan --source all`，随后校验新 `scan_id`。新扫描为 `partial` 时继续完整 index 和异常审计，并披露缺失边界；只有来源不可读、校验失败，或覆盖/异常不足以支撑结论时，才停止定稿并报告具体 Pending。不要把空 index 写成“昨日没有工作”。
 3. 采集门通过后，读取无过滤的完整 index，必要时提高 `--max-bytes`，直到预算、丢弃项和保留期边界都明确。
 4. 检查异常输入：同秒批量且切片很多、异常长或混合生命周期 Activity、partial 异常集中、疑似上下文导入。异常可能改变当天事实时，先展开定位；证据仍不可信则停止定稿并报告具体 pending。
@@ -188,7 +190,7 @@ git_commits: <正文引用的 Git commit 数>
 git_commit_ids: [<正文引用的 repo_key@完整 SHA>]
 ```
 
-`write` 负责机械闭合计数并原子写入。`git_commit_ids` 使用稳定的 `repo_key@完整 SHA`，不使用 LifeOS 另造的 per-commit ref；`project_key` 在 Git scan 时由已注册项目清单即时解析，不复制进日报 ID。本人明确确认后才运行 `lifeos reports confirm --day <YYYY-MM-DD>`，随后运行 `lifeos reports validate`。
+`write` 负责机械闭合计数并原子写入。`git_commit_ids` 使用稳定的 `repo_key@完整 SHA`，不使用 LifeOS 另造的 per-commit ref；`project_key` 在 Git scan 时由当前 Project Catalog 即时解析，不复制进日报 ID。本人明确确认后才运行 `lifeos reports confirm --day <YYYY-MM-DD>`，随后运行 `lifeos reports validate`。
 
 完成标准：正文、计数和 ID 清单通过 validate；没有本人确认时状态保持 draft。
 

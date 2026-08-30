@@ -1,6 +1,6 @@
 # Work 工作流
 
-通过 `lifeos work` 读写 LifeOS 私有工作账本。项目正文和正式状态仍归对应 Project Workspace；项目名称、别名、scope 和核心 DChat/Cooper 入口来自项目根 `lifeos-project.json`。Work 只保存个人工作脉络、行动闭环、清单路径和个人项目跟踪状态，不复制项目静态内容。
+通过 `lifeos work` 读写 LifeOS 私有工作账本。项目正文和正式状态仍归对应 Project Workspace；项目名称、别名、scope、当前目录和核心 DChat/Cooper 入口来自动态 Project Catalog 中的 `lifeos-project.json`。Work 只保存个人工作脉络、行动闭环、稳定 `project_key` 和个人项目跟踪状态，不复制项目静态内容或绝对路径。
 
 ## 授权门槛与分支
 
@@ -46,4 +46,4 @@ self，只显示具名 person / organization；字段缺失或 unknown 不显示
 
 Daily 交接候选时保留本人原话、事实来源、已确认字段和不可变来源身份。Work 返回对象或事件 ID 后，Daily 只保存该 ID 与结果摘要，不复制 Runtime 内容。
 
-入口、Schema、项目清单、权限或验证失败时报告具体阶段和原始错误，保持账本不变；先按原幂等键回读，不通过换参数或换键把失败改写成已完成。不兼容的公开前 Schema 不迁移或覆盖，只提示本人保留原目录并另行初始化 v1 Runtime。
+入口、Schema、Project Catalog、权限或验证失败时报告具体阶段和原始错误，保持账本不变；先按原幂等键回读，不通过换参数或换键把失败改写成已完成。发现单个跟踪项目暂时不可用时保留 `project_key` 和 Work 事实，只报告 linkage warning，不猜测路径或自动取消跟踪。旧项目路径注册只有在本人授权、完整 Catalog 对账和备份均通过时才使用公共迁移命令；不直接编辑 Runtime。

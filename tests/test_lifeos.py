@@ -14,6 +14,7 @@ from types import SimpleNamespace
 from unittest.mock import patch
 
 from lifeos import VERSION
+from lifeos_config.core import default_payload
 from lifeos_work.model import brief_date_label
 from lifeos_work.runtime import WorkTransaction
 from lifeos_work.views import (
@@ -44,6 +45,12 @@ class CLITestCase(unittest.TestCase):
         (self.data_dir / "backups").mkdir(mode=0o700)
         self.environment = os.environ.copy()
         self.environment["LIFEOS_HOME"] = str(self.data_dir)
+        config_path = self.data_dir / "config.json"
+        config = default_payload()
+        config["modules"]["projects"]["roots"] = [str(self.data_dir)]
+        config_path.write_text(json.dumps(config), encoding="utf-8")
+        config_path.chmod(0o600)
+        self.environment["LIFEOS_CONFIG"] = str(config_path)
 
     def tearDown(self):
         self.temporary_directory.cleanup()
@@ -51,6 +58,15 @@ class CLITestCase(unittest.TestCase):
     def run_cli(self, *arguments, check=True):
         return subprocess.run(
             [sys.executable, str(SCRIPT), "work", *arguments],
+            env=self.environment,
+            check=check,
+            text=True,
+            capture_output=True,
+        )
+
+    def run_root_cli(self, *arguments, check=True):
+        return subprocess.run(
+            [sys.executable, str(SCRIPT), *arguments],
             env=self.environment,
             check=check,
             text=True,
@@ -86,7 +102,7 @@ class WorkRuntimeInitTest(unittest.TestCase):
             capture_output=True,
         )
 
-    def test_init_creates_schema1_runtime_and_never_overwrites(self):
+    def test_init_creates_current_runtime_and_never_overwrites(self):
         for arguments in (
             ("--self-name", "   ", "--source", "本人确认"),
             ("--self-name", "测试用户", "--self-alias", "", "--source", "本人确认"),
@@ -113,7 +129,8 @@ class WorkRuntimeInitTest(unittest.TestCase):
             ("achievements.json", "achievements"),
         ):
             payload = json.loads((self.data_dir / name).read_text(encoding="utf-8"))
-            self.assertEqual(1, payload["schema_version"])
+            expected_version = 2 if name == "projects.json" else 1
+            self.assertEqual(expected_version, payload["schema_version"])
             self.assertEqual([], payload[collection])
         glossary = json.loads((self.data_dir / "glossary.json").read_text(encoding="utf-8"))
         self.assertEqual(1, glossary["schema_version"])
@@ -339,12 +356,12 @@ class PublicInterfaceTest(unittest.TestCase):
             changelog.index(f"## v{VERSION}"),
         )
 
-    def test_v1_help_exposes_only_the_current_contract(self):
+    def test_help_exposes_only_the_current_contract(self):
         work_help = self.run_root_cli("work", "--help").stdout
         self.assertIn("init", work_help)
         self.assertIn("task-reschedule", work_help)
         self.assertIn("task-schedule-history", work_help)
-        self.assertNotIn("migrate", work_help)
+        self.assertIn("migrate-project-catalog", work_help)
         task_help = self.run_root_cli("work", "task-add", "--help").stdout
         for removed in (
             "--type", "--intervention", "--next-check", "--note",
@@ -394,8 +411,8 @@ class PublicInterfaceTest(unittest.TestCase):
 
     def test_work_command_help_explains_high_risk_boundaries(self):
         expected = {
-            "init": ("全新的 Schema 1", "不导入或覆盖"),
-            "project-add": ("Runtime 只保存清单路径", "--manifest MANIFEST"),
+            "init": ("全新的当前 Work Runtime", "不导入或覆盖"),
+            "project-track": ("Project Catalog", "--project-key"),
             "work-item-milestone-update": (
                 "completed 必须同时具备 --summary、--completion-source 和 --decision",
                 "--activate-next",
@@ -448,8 +465,8 @@ class PublicInterfaceTest(unittest.TestCase):
     def test_split_cli_registers_every_public_command(self):
         work_help = self.run_root_cli("work", "--help").stdout
         for command in (
-            "init", "now", "brief", "projects", "project-add",
-            "project-update", "work-items", "work-item-milestones",
+            "init", "now", "brief", "projects", "project-track",
+            "project-update", "migrate-project-catalog", "work-items", "work-item-milestones",
             "work-item-milestone-add", "work-item-milestone-update",
             "work-item-add", "work-item-update", "tasks", "achievements",
             "achievement-add", "achievement-update", "achievement-archive",
@@ -656,7 +673,7 @@ class DisplaySeparatorTest(unittest.TestCase):
                 "updated_at": None,
             }
         )
-        self.assertIn("> 这里只保存项目身份和事实源位置，不复制项目正文或真实阶段。\n\n---\n\n## PRJ-1", projects)
+        self.assertIn("> Work 只保存个人跟踪关系；名称与当前目录由 Project Catalog 动态补全。\n\n---\n\n## PRJ-1", projects)
         self.assertIn("事实源**：workspace · one\n\n---\n\n## PRJ-2", projects)
 
         tasks = render_tasks(
@@ -1517,7 +1534,7 @@ class WorkWorkflowTest(CLITestCase):
         self.run_cli("validate")
         self.assertNotEqual("stale view\n", now_path.read_text(encoding="utf-8"))
 
-    def test_project_registers_manifest_and_state_reason(self):
+    def test_project_tracks_discovered_key_and_state_reason(self):
         project_root = self.data_dir / "project"
         project_root.mkdir()
         manifest_path = project_root / "lifeos-project.json"
@@ -1530,18 +1547,97 @@ class WorkWorkflowTest(CLITestCase):
             "sources": {"dchat": {"groups": []}, "cooper": {"resources": []}},
         }, ensure_ascii=False, indent=2) + "\n", encoding="utf-8")
         project_id = self.created_id(self.run_cli(
-            "project-add", "--manifest", str(project_root),
+            "project-track", "--project-key", "synthetic-project",
             "--tracking-state", "paused", "--reason", "等待重新启动",
             "--source", "test fixture",
         ))
         project = next(value for value in self.load_json("projects.json")["projects"] if value["id"] == project_id)
         self.assertEqual("synthetic-project", project["project_key"])
-        self.assertEqual(str(manifest_path), project["manifest_path"])
+        self.assertNotIn("manifest_path", project)
         self.assertNotIn("name", project)
         self.assertNotIn("fact_source", project)
         self.assertEqual("等待重新启动", project["status_reason"])
 
-    def test_validate_reports_an_invalid_manifest_without_rendering_compact_projects(self):
+    def test_project_catalog_migration_removes_legacy_manifest_paths(self):
+        project_root = self.data_dir / "legacy-project"
+        project_root.mkdir()
+        manifest_path = project_root / "lifeos-project.json"
+        manifest_path.write_text(json.dumps({
+            "schema_version": 1,
+            "project_key": "legacy-project",
+            "name": "Legacy Project",
+            "aliases": [],
+            "scope": "project",
+            "sources": {"dchat": {"groups": []}, "cooper": {"resources": []}},
+        }), encoding="utf-8")
+        project_id = self.created_id(self.run_cli(
+            "project-track", "--project-key", "legacy-project",
+            "--source", "test fixture",
+        ))
+        legacy = self.load_json("projects.json")
+        legacy["schema_version"] = 1
+        legacy["projects"][0]["manifest_path"] = str(manifest_path)
+        (self.data_dir / "projects.json").write_text(
+            json.dumps(legacy), encoding="utf-8"
+        )
+
+        migrated = self.run_cli(
+            "migrate-project-catalog",
+            "--source", "test fixture migration",
+        )
+        self.assertIn("迁移完成", migrated.stdout)
+        current = self.load_json("projects.json")
+        self.assertEqual(2, current["schema_version"])
+        self.assertEqual(project_id, current["projects"][0]["id"])
+        self.assertNotIn("manifest_path", current["projects"][0])
+        self.assertTrue(list((self.data_dir / "backups").glob("project-catalog-*")))
+        self.run_cli("validate")
+
+    def test_moved_project_is_rediscovered_without_work_write(self):
+        original_root = self.data_dir / "original-project"
+        original_root.mkdir()
+        original_manifest = original_root / "lifeos-project.json"
+        payload = {
+            "schema_version": 1,
+            "project_key": "moved-project",
+            "name": "迁移项目",
+            "aliases": [],
+            "scope": "project",
+            "sources": {"dchat": {"groups": []}, "cooper": {"resources": []}},
+        }
+        original_manifest.write_text(json.dumps(payload), encoding="utf-8")
+        project_id = self.created_id(self.run_cli(
+            "project-track", "--project-key", "moved-project",
+            "--source", "test fixture",
+        ))
+        events_before = (self.data_dir / "events.jsonl").read_bytes()
+
+        relocated_root = self.data_dir / "relocated-project"
+        relocated_root.mkdir()
+        relocated_manifest = relocated_root / "lifeos-project.json"
+        relocated_manifest.write_text(json.dumps(payload), encoding="utf-8")
+        original_manifest.unlink()
+
+        discovered = json.loads(self.run_root_cli(
+            "project", "discover", "--json"
+        ).stdout)
+        current = next(
+            item for item in discovered["projects"]
+            if item["project_key"] == "moved-project"
+        )
+        self.assertEqual(str(relocated_root), current["root"])
+        hydrated = json.loads(self.run_cli("projects", "--json").stdout)
+        tracked = next(item for item in hydrated if item["id"] == project_id)
+        self.assertEqual(str(relocated_root), tracked["fact_source"]["location"])
+        project = next(
+            item for item in self.load_json("projects.json")["projects"]
+            if item["id"] == project_id
+        )
+        self.assertNotIn("manifest_path", project)
+        self.assertEqual(events_before, (self.data_dir / "events.jsonl").read_bytes())
+        self.run_cli("validate")
+
+    def test_invalid_manifest_isolated_from_work_validation(self):
         project_root = self.data_dir / "invalid-manifest-project"
         project_root.mkdir()
         manifest_path = project_root / "lifeos-project.json"
@@ -1555,17 +1651,27 @@ class WorkWorkflowTest(CLITestCase):
         }
         manifest_path.write_text(json.dumps(payload), encoding="utf-8")
         self.run_cli(
-            "project-add", "--manifest", str(project_root),
+            "project-track", "--project-key", "invalid-manifest-project",
             "--source", "test fixture",
         )
         payload["schema_version"] = 2
         manifest_path.write_text(json.dumps(payload), encoding="utf-8")
 
-        result = self.run_cli("validate", check=False)
-        self.assertEqual(1, result.returncode)
-        self.assertIn("schema_version 必须为 1", result.stderr)
-        self.assertNotIn("Traceback", result.stderr)
-        self.assertNotIn("KeyError", result.stderr)
+        result = self.run_cli("validate")
+        self.assertIn("当前不可用", result.stdout)
+        project_validation = self.run_root_cli(
+            "project", "validate", "--all", check=False
+        )
+        self.assertEqual(1, project_validation.returncode)
+        self.assertIn("schema_version 必须为 1", project_validation.stdout)
+
+    def test_invalid_project_config_does_not_make_core_work_unreadable(self):
+        config_path = Path(self.environment["LIFEOS_CONFIG"])
+        config_path.write_text(json.dumps({"unknown": True}), encoding="utf-8")
+        result = self.run_cli("validate")
+        self.assertIn("内部审计与派生视图一致", result.stdout)
+        projects = self.run_cli("projects", "--json")
+        self.assertEqual([], json.loads(projects.stdout))
 
     def test_light_work_item_supports_one_or_two_tasks_without_milestones(self):
         work_item_id = self.add_work_item()

@@ -46,7 +46,8 @@
 2. 只读核实候选 DChat 群与 Cooper 核心入口；删除单聊、普通材料和整库枚举。
 3. 创建或最小更新项目根 `lifeos-project.json`，不顺手改项目状态文档。
 4. 运行 `lifeos project validate <项目根>`；失败时只修清单，不绕过 Schema。
-5. 若该项目尚未进入 Work 且本人同时授权注册，运行 `lifeos work project-add --manifest <项目根> --source <依据>`；已注册时只在路径确实变化后使用 `project-update --manifest`。
-6. 回读 `lifeos work projects --json`、`lifeos sessions projects --json` 和相关 `lifeos dchat projects list --json`，确认三处均由同一清单派生。
+5. 运行 `lifeos project discover --json`，确认该 `project_key` 在已配置发现根中唯一有效；未覆盖项目根时，只有本人明确授权维护本机发现范围后才运行 `lifeos config project-root add <稳定上级目录>`。
+6. 若该项目尚未进入 Work 且本人同时授权个人跟踪，运行 `lifeos work project-track --project-key <project_key> --source <依据>`。项目搬迁不更新 Work 路径；保持键不变并重新发现即可。
+7. 回读 `lifeos work projects --json`、`lifeos sessions projects --json` 和相关 `lifeos dchat projects list --json`，确认三处均由同一 Catalog 项目派生。
 
-完成标准：清单位于正确项目根、精确通过校验；只含已核实的静态身份、核心群聊和核心 Cooper 入口；LifeOS 没有第二份静态项目内容需要维护。
+完成标准：清单位于正确项目根、精确通过校验并在 Catalog 中唯一可见；只含已核实的静态身份、核心群聊和核心 Cooper 入口；LifeOS 没有第二份静态项目内容需要维护。是否进入个人 Work 跟踪单独报告。

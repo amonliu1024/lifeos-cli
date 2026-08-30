@@ -2,8 +2,11 @@ import json
 import tempfile
 import unittest
 from pathlib import Path
+from typing import Optional
 
 from lifeos_projects.manifest import ProjectManifestError, load_manifest, normalize_manifest
+from lifeos_config.core import default_payload, normalize_config
+from lifeos_projects.catalog import discover_projects
 
 
 def manifest(**overrides):
@@ -71,6 +74,67 @@ class ProjectManifestTest(unittest.TestCase):
     def test_unknown_schema_is_rejected(self):
         with self.assertRaisesRegex(ProjectManifestError, "schema_version 必须为 1"):
             normalize_manifest(manifest(schema_version=2))
+
+
+class ProjectCatalogTest(unittest.TestCase):
+    def config(self, root: Path):
+        payload = default_payload()
+        payload["modules"]["projects"]["roots"] = [str(root)]
+        return normalize_config(payload, root / "config.json", exists=True)
+
+    def write_manifest(self, root: Path, key: str, name: Optional[str] = None):
+        root.mkdir(parents=True, exist_ok=True)
+        payload = manifest(
+            project_key=key,
+            name=name or key,
+            aliases=[],
+            sources={"dchat": {"groups": []}, "cooper": {"resources": []}},
+        )
+        (root / "lifeos-project.json").write_text(
+            json.dumps(payload), encoding="utf-8"
+        )
+
+    def test_discovers_new_and_nested_projects_without_work_registration(self):
+        with tempfile.TemporaryDirectory() as directory:
+            root = Path(directory)
+            self.write_manifest(root / "one", "one")
+            self.write_manifest(root / "group" / "child", "child")
+            catalog = discover_projects(self.config(root))
+            self.assertEqual(["child", "one"], sorted(catalog.by_key))
+            self.assertFalse(catalog.findings)
+
+    def test_duplicate_project_key_is_isolated_from_other_projects(self):
+        with tempfile.TemporaryDirectory() as directory:
+            root = Path(directory)
+            self.write_manifest(root / "one", "duplicate")
+            self.write_manifest(root / "two", "duplicate")
+            self.write_manifest(root / "healthy", "healthy")
+            catalog = discover_projects(self.config(root))
+            self.assertEqual(["healthy"], list(catalog.by_key))
+            self.assertEqual("key_conflict", catalog.hard_findings[0].code)
+
+    def test_invalid_manifest_does_not_hide_valid_projects(self):
+        with tempfile.TemporaryDirectory() as directory:
+            root = Path(directory)
+            self.write_manifest(root / "healthy", "healthy")
+            invalid = root / "invalid"
+            invalid.mkdir()
+            (invalid / "lifeos-project.json").write_text("{}", encoding="utf-8")
+            catalog = discover_projects(self.config(root))
+            self.assertEqual(["healthy"], list(catalog.by_key))
+            self.assertEqual("invalid_manifest", catalog.hard_findings[0].code)
+
+    def test_overlapping_discovery_roots_do_not_duplicate_one_manifest(self):
+        with tempfile.TemporaryDirectory() as directory:
+            root = Path(directory)
+            child = root / "group"
+            self.write_manifest(child / "project", "one")
+            payload = default_payload()
+            payload["modules"]["projects"]["roots"] = [str(root), str(child)]
+            config = normalize_config(payload, root / "config.json", exists=True)
+            catalog = discover_projects(config)
+            self.assertEqual(["one"], list(catalog.by_key))
+            self.assertFalse(catalog.findings)
 
 
 if __name__ == "__main__":

@@ -2,7 +2,7 @@
 
 import json
 
-from lifeos_projects.manifest import ProjectManifestError, load_manifest, resolve_manifest_path
+from lifeos_projects.catalog import discover_projects
 from lifeos_projects.registry import hydrate_project_record
 
 from ..errors import fail
@@ -11,7 +11,6 @@ from ..model import (
     generate_id,
     iso_now,
     make_event,
-    project_name_owners,
 )
 from ..runtime import (
     read_current_data,
@@ -47,24 +46,25 @@ def command_projects(args):
         )
 
 
-def command_project_add(args):
-    manifest_path = resolve_manifest_path(args.manifest)
-    try:
-        manifest = load_manifest(manifest_path)
-    except ProjectManifestError as exc:
-        fail(str(exc))
+def command_project_track(args):
     with transaction(args) as tx:
         if tx.idempotent_result():
             return
+        catalog = discover_projects()
+        project_manifest = catalog.by_key.get(args.project_key)
+        if project_manifest is None:
+            related = [
+                item.message for item in catalog.findings
+                if item.project_key == args.project_key
+            ]
+            detail = f"：{'；'.join(related)}" if related else ""
+            fail(f"Project Catalog 中没有唯一有效项目：{args.project_key}{detail}")
         projects_data = tx.data("projects")
-        owners = project_name_owners(projects_data["projects"])
-        collisions = [
-            value
-            for value in [manifest["name"], *manifest["aliases"]]
-            if value.casefold() in owners
-        ]
-        if collisions:
-            fail(f"项目名称或别名已存在：{', '.join(collisions)}")
+        if any(
+            item.get("project_key") == args.project_key
+            for item in projects_data["projects"]
+        ):
+            fail(f"项目已在 Work 中跟踪：{args.project_key}")
         if args.tracking_state in {"paused", "archived"} and not args.reason:
             fail("暂停或归档项目引用必须提供 --reason")
         timestamp = iso_now()
@@ -74,20 +74,19 @@ def command_project_add(args):
         projects_data["projects"].append(
             hydrate_project_record({
                 "id": project_id,
-                "project_key": manifest["project_key"],
-                "manifest_path": str(manifest_path),
+                "project_key": args.project_key,
                 "tracking_state": args.tracking_state,
                 "status_reason": args.reason,
                 "created_at": timestamp,
                 "updated_at": timestamp,
-            })
+            }, catalog)
         )
         projects_data["updated_at"] = timestamp
         event = make_event(
             tx.events,
             args,
             "project_registered",
-            f"注册项目引用 {project_id}：{manifest['name']}",
+            f"跟踪项目 {project_id}：{project_manifest.name}",
             project_id=project_id,
             sources=args.source,
         )
@@ -100,26 +99,8 @@ def command_project_update(args):
             return
         projects_data = tx.data("projects")
         project = find_item(projects_data["projects"], args.id, "项目引用")
+        project_id = project["id"]
         changes = []
-        if args.manifest is not None:
-            manifest_path = resolve_manifest_path(args.manifest)
-            try:
-                manifest = load_manifest(manifest_path)
-            except ProjectManifestError as exc:
-                fail(str(exc))
-            owners = project_name_owners(projects_data["projects"], args.id)
-            collisions = [
-                value
-                for value in [manifest["name"], *manifest["aliases"]]
-                if value.casefold() in owners
-            ]
-            if collisions:
-                fail(f"项目名称或别名已存在：{', '.join(collisions)}")
-            if manifest["project_key"] != project.get("project_key"):
-                fail("更新 manifest 路径时 project_key 必须保持不变")
-            if str(manifest_path) != project.get("manifest_path"):
-                project["manifest_path"] = str(manifest_path)
-                changes.append("manifest_path")
         for field, value in {"tracking_state": args.tracking_state}.items():
             if value is not None and value != project.get(field):
                 project[field] = value
@@ -133,16 +114,13 @@ def command_project_update(args):
             fail("没有提供任何实际更新")
         timestamp = iso_now()
         project["updated_at"] = timestamp
-        refreshed = hydrate_project_record(project)
-        project.clear()
-        project.update(refreshed)
         projects_data["updated_at"] = timestamp
         event = make_event(
             tx.events,
             args,
             "project_updated",
-            f"更新项目引用 {args.id}：{', '.join(changes)}",
-            project_id=args.id,
+            f"更新项目引用 {project_id}：{', '.join(changes)}",
+            project_id=project_id,
             sources=args.source,
         )
         tx.commit("projects", event)

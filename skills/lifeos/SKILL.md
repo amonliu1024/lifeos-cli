@@ -13,7 +13,7 @@ description: 读取或更新 LifeOS 私有工作账本，数字化项目的 Life
 
 Runtime authority 默认位于 `~/.local/share/lifeos/`，私人配置位于 `~/.config/lifeos/config.json`。若 `~/.config/lifeos/agent-profile.md` 存在，可把它作为用户称呼、输出偏好和本地工作习惯的个人补充；它不属于本 Skill、不得进入仓库，也不能扩大写入或外部操作授权。
 
-项目静态身份与核心协作入口由各项目根 `lifeos-project.json` 持有；Work Runtime 只注册清单路径和个人跟踪状态。Work 事实只通过 `lifeos work` 读写；Sessions 与 DChat 的项目归属由已注册清单即时派生，不另设维护入口；日报只通过 `lifeos reports` 准备、写入和确认。账本授权不等于修改项目正式状态、代码、部署、发送消息或产生其他外部副作用。
+项目静态身份与核心协作入口由各项目根 `lifeos-project.json` 持有；项目当前位置由 Git 外私人配置声明的发现根动态形成 Project Catalog，Work Runtime 只按 `project_key` 保存个人跟踪状态。Work 事实只通过 `lifeos work` 读写；Sessions、DChat 与 Git 的项目归属由 Catalog 即时派生，不另设维护入口；日报只通过 `lifeos reports` 准备、写入和确认。账本授权不等于修改项目正式状态、代码、部署、发送消息或产生其他外部副作用。
 
 ## 分流
 
@@ -25,7 +25,7 @@ Runtime authority 默认位于 `~/.local/share/lifeos/`，私人配置位于 `~/
 | 生成、补写、重做、确认日报，或回答某个自然日做了什么 | 读取 [`references/daily.md`](references/daily.md)；读取会话正文或填写证据计数前，再读取 [`references/session-evidence.md`](references/session-evidence.md) |
 | Daily 产生候选且本人另行明确要求写入 Work | 保留 Daily 上下文，再读取 Work 两份 reference，按 Work create-only 分支执行并回收 ID |
 
-请求同时包含多个分支时按依赖顺序执行：Project 先提供静态身份和入口；Work 再注册清单或维护个人状态；Daily 先形成候选，只有本人对具体候选另行授权后才进入 Work。确认项目清单、确认日报、确认“要做”和授权写入 Work 是不同动作，不互相推导。
+请求同时包含多个分支时按依赖顺序执行：Project 先提供静态身份和入口并确认 Catalog 可发现；Work 再按 `project_key` 建立或维护个人跟踪；Daily 先形成候选，只有本人对具体候选另行授权后才进入 Work。确认项目清单、确认日报、确认“要做”和授权写入 Work 是不同动作，不互相推导。
 
 ## 完成标准
 

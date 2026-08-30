@@ -93,6 +93,22 @@ class ConfigCLITest(unittest.TestCase):
         self.assertIn("没有启用", result.stderr)
         self.assertFalse((self.root / "runtime").exists())
 
+    def test_project_roots_are_managed_through_public_config_commands(self):
+        project_root = self.root / "projects"
+        project_root.mkdir()
+        added = self.run_cli(
+            "config", "project-root", "add", str(project_root), "--json"
+        )
+        self.assertTrue(json.loads(added.stdout)["changed"])
+        listed = json.loads(self.run_cli(
+            "config", "project-root", "list", "--json"
+        ).stdout)
+        self.assertEqual([str(project_root)], listed["roots"])
+        removed = self.run_cli(
+            "config", "project-root", "remove", str(project_root), "--json"
+        )
+        self.assertTrue(json.loads(removed.stdout)["changed"])
+
 
 class ConfigValidationTest(unittest.TestCase):
     def test_unknown_and_credential_fields_are_rejected(self):
@@ -124,6 +140,16 @@ class ConfigValidationTest(unittest.TestCase):
         )
         with self.assertRaisesRegex(ValueError, "未启用"):
             resolve_selected_sources(["smartwork"], ["codex", "claude"])
+
+    def test_project_roots_must_be_absolute_and_excludes_are_names(self):
+        payload = default_payload()
+        payload["modules"]["projects"]["roots"] = ["relative"]
+        with self.assertRaisesRegex(ConfigError, "绝对路径"):
+            normalize_config(payload, Path("/synthetic"), exists=True)
+        payload = default_payload()
+        payload["modules"]["projects"]["exclude"] = ["nested/cache"]
+        with self.assertRaisesRegex(ConfigError, "相对目录名"):
+            normalize_config(payload, Path("/synthetic"), exists=True)
 
 
 if __name__ == "__main__":

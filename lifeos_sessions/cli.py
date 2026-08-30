@@ -362,13 +362,14 @@ def command_prune(args: Any) -> None:
 def _project_map(data_dir: Path) -> ProjectMap:
     try:
         return ProjectMap.from_dict(project_map_payload(data_dir))
-    except (ProjectManifestError, ValueError) as exc:
+    except (ConfigError, ProjectManifestError, ValueError) as exc:
         _fail(str(exc), 1)
 
 
 def command_index(args: Any) -> None:
     try:
         window = TimeWindow.from_values(args.from_value, args.to_value)
+        project_map = _project_map(args.data_dir)
         result = build_activity_index(
             SessionsStore(args.sessions_root),
             window,
@@ -379,8 +380,9 @@ def command_index(args: Any) -> None:
             query=args.query,
             max_bytes=args.max_bytes,
             gap_ms=args.gap_minutes * 60 * 1000,
-            project_map=_project_map(args.data_dir),
+            project_map=project_map,
         )
+        result["project_catalog"] = project_map.to_dict()["catalog"]
     except (FileNotFoundError, SessionError, StoreError, TypeError, ValueError) as exc:
         _fail(str(exc), 1)
     if args.json:
@@ -434,15 +436,15 @@ def command_index(args: Any) -> None:
 def command_projects(args: Any) -> None:
     project_map = _project_map(args.data_dir)
     if args.json:
-        _json({"authority": "work/lifeos-project.json", **project_map.to_dict()})
+        _json({"authority": "project-catalog/lifeos-project.json", **project_map.to_dict()})
         return
-    print("项目身份：由 Work 注册的 lifeos-project.json 派生")
+    print("项目身份：由配置发现根中的 lifeos-project.json 动态派生")
     print(f"一次性会话目录：{'、'.join(project_map.ad_hoc_roots) or '（无）'}")
     print(f"Worktree 根：{'、'.join(project_map.worktree_roots) or '（无）'}")
     if not project_map.projects:
-        print("\n尚未注册任何项目清单。")
+        print("\n当前发现根中没有有效项目清单。")
         return
-    print("\n已确认项目：")
+    print("\n已发现项目：")
     for entry in sorted(project_map.projects, key=lambda item: item["key"]):
         print(f"  {entry['key']}{' · ' + entry['title'] if entry.get('title') else ''}")
         for root_value in entry["roots"]:
