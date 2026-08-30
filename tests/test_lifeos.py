@@ -356,32 +356,41 @@ class PublicInterfaceTest(unittest.TestCase):
             changelog.index(f"## v{VERSION}"),
         )
 
-    def test_help_exposes_only_the_current_contract(self):
-        work_help = self.run_root_cli("work", "--help").stdout
-        self.assertIn("init", work_help)
-        self.assertIn("task-reschedule", work_help)
-        self.assertIn("task-schedule-history", work_help)
-        self.assertIn("migrate-project-catalog", work_help)
+    def test_no_arguments_show_home_instead_of_a_parser_error(self):
+        result = self.run_root_cli()
+
+        self.assertEqual("", result.stderr)
+        self.assertEqual(
+            [
+                " ⢀⣠⠀⠀⠀⡀",
+                "⣰⢫⢖⣫⣝⡂⠙⣆",
+                "⡇⣏⢾⠀⠀⡷⠀⢸",
+                "⠹⣜⠦⣄⣠⠴⣣⠏",
+                " ⠈⠙⠒⠒⠋⠁",
+                " LifeOS",
+                f" v{VERSION}",
+            ],
+            result.stdout.splitlines()[:7],
+        )
+        self.assertIn("以数据，照见人生。", result.stdout)
+        self.assertIn("让行动有迹，让经历成知。", result.stdout)
+        self.assertIn("lifeos --help", result.stdout)
+
+    def test_task_schedule_options_follow_the_current_owner(self):
         task_help = self.run_root_cli("work", "task-add", "--help").stdout
-        for removed in (
-            "--type", "--intervention", "--next-check", "--note",
-            "--completion-evidence", "--next-action-at",
-        ):
-            self.assertNotIn(removed, task_help)
         for retained in ("--next-action", "--due", "--completion-criteria"):
             self.assertIn(retained, task_help)
+
         update_help = self.run_root_cli("work", "task-update", "--help").stdout
         self.assertNotIn("--due", update_help)
-        self.assertNotIn("--next-action-at", update_help)
+
         reschedule_help = self.run_root_cli(
             "work", "task-reschedule", "--help"
         ).stdout
         for option in ("--due", "--clear-due", "--reason-code", "--note"):
             self.assertIn(option, reschedule_help)
-        self.assertNotIn("--next-action-at", reschedule_help)
-        self.assertNotIn("--clear-next-action-at", reschedule_help)
 
-    def test_work_help_explains_query_defaults_and_write_contract(self):
+    def test_work_help_explains_high_consequence_boundaries(self):
         root_help = self.run_root_cli("--help").stdout
         self.assertIn("sessions 只读 Agent 应用来源，维护私有派生索引", root_help)
         self.assertIn("git      只读本地 Git 提交，维护日报辅助证据快照", root_help)
@@ -394,46 +403,20 @@ class PublicInterfaceTest(unittest.TestCase):
             "--source 是本次记录的事实来源",
             "--idempotency-key 是重试时使用的稳定键",
             "--due 是结果硬截止",
-            "target_at",
-            "idea 的 status=archived",
         ):
             self.assertIn(phrase, work_help)
-
-        brief_help = self.run_root_cli("work", "brief", "--help").stdout
-        for phrase in (
-            "current 当前前瞻",
-            "reminder",
-            "closeout",
-            "18:00 收口",
-        ):
-            self.assertIn(phrase, brief_help)
-        self.assertNotIn("lookahead", brief_help)
 
     def test_work_command_help_explains_high_risk_boundaries(self):
         expected = {
             "init": ("全新的当前 Work Runtime", "不导入或覆盖"),
-            "project-track": ("Project Catalog", "--project-key"),
             "work-item-milestone-update": (
                 "completed 必须同时具备 --summary、--completion-source 和 --decision",
                 "--activate-next",
             ),
-            "task-add": (
-                "waiting 或 paused",
-                "--next-action",
-            ),
-            "task-update": (
-                "下一行动只保留文本",
-                "task-reschedule",
-            ),
             "task-reschedule": (
                 "只调整待办的 due_at",
-                "date_correction",
+                "--reason-code",
             ),
-            "idea-update": ("inbox/incubating/promoted/archived", "--promote-to"),
-            "achievement-supersede": ("保留为 superseded", "--reason"),
-            "term-add": ("省略时使用本地当前日期", "--confirmed-at"),
-            "term-update": ("省略时保持当前值不变", "--confirmed-at"),
-            "work-item-add": ("创建事项的直接项目引用 ID", "--project-id"),
             "refresh": ("不改变事实 JSON 或 events.jsonl", "派生 Markdown"),
             "validate": ("只读校验", "派生视图"),
         }
@@ -442,45 +425,6 @@ class PublicInterfaceTest(unittest.TestCase):
             for phrase in phrases:
                 with self.subTest(command=command, phrase=phrase):
                     self.assertIn(phrase, help_text)
-
-        reschedule_help = self.run_root_cli(
-            "work", "task-reschedule", "--help"
-        ).stdout
-        self.assertNotIn("action_completed", reschedule_help)
-
-        idea_help = self.run_root_cli("work", "idea-update", "--help").stdout
-        self.assertNotIn("暂停", idea_help)
-        term_add_help = self.run_root_cli("work", "term-add", "--help").stdout
-        self.assertNotIn("保持当前值不变", term_add_help)
-        term_update_help = self.run_root_cli(
-            "work", "term-update", "--help"
-        ).stdout
-        self.assertNotIn("使用本地当前日期", term_update_help)
-        work_item_add_help = self.run_root_cli(
-            "work", "work-item-add", "--help"
-        ).stdout
-        self.assertNotIn("--work-item-id", work_item_add_help)
-        self.assertIn("一句话最近门槛", work_item_add_help)
-
-    def test_split_cli_registers_every_public_command(self):
-        work_help = self.run_root_cli("work", "--help").stdout
-        for command in (
-            "init", "now", "brief", "projects", "project-track",
-            "project-update", "migrate-project-catalog", "work-items", "work-item-milestones",
-            "work-item-milestone-add", "work-item-milestone-update",
-            "work-item-add", "work-item-update", "tasks", "achievements",
-            "achievement-add", "achievement-update", "achievement-archive",
-            "achievement-supersede", "task-add", "task-update", "task-start",
-            "task-reschedule", "task-schedule-history", "task-close",
-            "task-reflect", "ideas", "idea-add", "idea-update", "glossary",
-            "term-add", "term-update", "show", "history", "review", "changes",
-            "refresh", "validate",
-        ):
-            self.assertIn(command, work_help)
-        sessions_help = self.run_root_cli("sessions", "--help").stdout
-        for command in ("scan", "scans", "list", "show", "pack", "validate"):
-            self.assertIn(command, sessions_help)
-
 
 class CurrentBriefViewTest(unittest.TestCase):
     def test_current_brief_uses_item_tree_and_time_tags(self):

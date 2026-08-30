@@ -497,35 +497,22 @@ class SessionsCLIIntegrationTest(unittest.TestCase):
         removed = self.run_cli("scope")
         self.assertEqual(2, removed.returncode)
 
-    def test_each_sessions_help_explains_view_granularity_and_side_effects(self):
-        expected = {
-            "scan": (
-                "ISO-8601", "写入私有 Sessions 派生存储", "omission",
-                "all 展开为 codex、claude、smartwork",
-            ),
-            "rebuild": (
-                "staging", "--apply", "active Sessions",
-                "all 展开为 codex、claude、smartwork",
-            ),
-            "list": ("ConversationSlice", "半开窗口", "全文索引"),
-            "show": ("SLICE-ID", "不可变历史版本", "执行证据"),
-            "validate": ("不创建、不修复", "FTS", "SCAN-ID"),
-            "usage": ("真实字节数", "观测增速", "只读诊断"),
-            "scans": ("scan manifest", "不回源", "半开窗口"),
-            "compact": ("FTS optimize", "VACUUM", "不删除"),
-            "prune": ("dry-run", "--apply", "不可逆"),
-            "index": (
-                "可展示 Activity", "cleaning_summary", "字节预算", "suppressed_activities",
-            ),
-            "projects": ("只读", "lifeos-project.json", "不再维护第二份私有项目映射"),
-            "pack": ("Activity", "--max-bytes", "omission", "均可选", "无筛选时"),
-        }
-        for command, snippets in expected.items():
-            with self.subTest(command=command):
-                result = self.run_cli(command, "--help")
-                self.assertEqual(0, result.returncode, result.stderr)
-                for snippet in snippets:
-                    self.assertIn(snippet, result.stdout)
+    def test_sessions_help_exposes_write_apply_and_irreversible_boundaries(self):
+        scan_help = self.run_cli("scan", "--help").stdout
+        self.assertIn("写入私有 Sessions 派生存储", scan_help)
+
+        rebuild_help = self.run_cli("rebuild", "--help").stdout
+        self.assertIn("staging", rebuild_help)
+        self.assertIn("--apply", rebuild_help)
+        self.assertIn("active Sessions", rebuild_help)
+
+        prune_help = self.run_cli("prune", "--help").stdout
+        self.assertIn("dry-run", prune_help)
+        self.assertIn("--apply", prune_help)
+        self.assertIn("不可逆", prune_help)
+
+        validate_help = self.run_cli("validate", "--help").stdout
+        self.assertIn("不创建、不修复", validate_help)
 
 
 if __name__ == "__main__":

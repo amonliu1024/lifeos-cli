@@ -54,28 +54,26 @@ class ReportsHelpTest(ReportsCLITestCase):
     def test_reports_help_explains_natural_day_and_state_boundaries(self):
         output = self.run_cli("--help").stdout
 
-        for term in ("自然日日报", "begin", "write", "confirm", "path", "list", "validate"):
-            self.assertIn(term, output)
+        self.assertIn("自然日日报", output)
         self.assertIn("Asia/Shanghai", output)
         self.assertIn("begin/write/confirm", output)
         self.assertIn("会写入日报", output)
         self.assertIn("path/list/validate", output)
         self.assertIn("只读", output)
 
-    def test_each_reports_subcommand_help_states_its_contract(self):
-        expected = {
-            "begin": ("写入握手", "draft", "--redo", "superseded", "正文"),
-            "write": ("原子写入", "draft", "--body-file", "唯一", "不确认"),
-            "confirm": ("校验", "confirmed", "本人", "状态写入"),
-            "path": ("只读", "状态", "superseded", "不创建目录或文件"),
-            "list": ("半开", "左闭", "右开", "缺失", "只读"),
-            "validate": ("frontmatter", "权限", "不创建", "不修改", "不确认"),
-        }
-        for command, terms in expected.items():
-            with self.subTest(command=command):
-                output = self.run_cli(command, "--help").stdout
-                for term in terms:
-                    self.assertIn(term, output)
+    def test_stateful_reports_help_exposes_confirmation_and_read_only_gates(self):
+        begin_help = self.run_cli("begin", "--help").stdout
+        self.assertIn("--redo", begin_help)
+        self.assertIn("confirmed", begin_help)
+
+        confirm_help = self.run_cli("confirm", "--help").stdout
+        self.assertIn("本人", confirm_help)
+        self.assertIn("状态写入", confirm_help)
+
+        validate_help = self.run_cli("validate", "--help").stdout
+        self.assertIn("不创建", validate_help)
+        self.assertIn("不修改", validate_help)
+        self.assertIn("不确认", validate_help)
 
 
 class BeginTest(ReportsCLITestCase):

@@ -82,6 +82,43 @@ ROOT_EPILOG = """领域边界：
 
 所有时间窗口使用半开区间 [from, to)；具体参数、默认值和写入边界以对应子命令 --help 为准。"""
 
+HOME_LOGO_LINES = (
+    "⢀⣠⠀⠀⠀⡀",
+    "⣰⢫⢖⣫⣝⡂⠙⣆",
+    "⡇⣏⢾⠀⠀⡷⠀⢸",
+    "⠹⣜⠦⣄⣠⠴⣣⠏",
+    "⠈⠙⠒⠒⠋⠁",
+)
+
+HOME_TEMPLATE = """{brand}
+
+以数据，照见人生。
+让行动有迹，让经历成知。
+
+常用命令
+  lifeos work brief --mode current   查看当前工作简报
+  lifeos work tasks                  查看待办
+  lifeos work show TASK-ID           查看一条待办的完整记录
+  lifeos work task-add --help        新增待办
+  lifeos work task-close --help      完成待办并记录完成依据
+  lifeos work idea-add --help        记下一条闪念
+  lifeos project discover            发现项目工作区
+  lifeos capabilities                检查本机可用能力
+
+开始使用
+  lifeos --help                      查看所有领域
+  lifeos <领域> --help                查看领域内的命令
+"""
+
+
+def render_home(version):
+    """Render the compact terminal adaptation of the LifeOS brand mark."""
+
+    brand_lines = (*HOME_LOGO_LINES, "LifeOS", f"v{version}")
+    brand_width = max(len(line) for line in brand_lines)
+    brand = "\n".join(line.center(brand_width).rstrip() for line in brand_lines)
+    return HOME_TEMPLATE.format(brand=brand)
+
 WORK_DESCRIPTION = """管理 LifeOS 的个人工作事实：项目引用、事项、里程碑、待办、闪念、实体名词和成果胶囊。
 
 先用查询命令读取当前事实，再用写入命令记录本人确认的变化。事项是工作脉络，待办是唯一可关闭的执行结果；成果胶囊是可选的复用资产。"""
@@ -590,7 +627,7 @@ def build_parser(version):
         formatter_class=argparse.RawDescriptionHelpFormatter,
     )
     parser.add_argument("--version", action="version", version=f"LifeOS v{version}")
-    domains = parser.add_subparsers(dest="domain", required=True)
+    domains = parser.add_subparsers(dest="domain")
     from lifeos_modules import register_command_modules
 
     work = domains.add_parser(
@@ -1042,4 +1079,7 @@ def build_parser(version):
 def main(version):
     parser = build_parser(version)
     args = parser.parse_args()
+    if args.domain is None:
+        print(render_home(version))
+        return
     args.handler(args)
