@@ -54,7 +54,7 @@ def _window(args: Any) -> TimeWindow:
 
 def command_configure(args: Any) -> None:
     try:
-        payload = configure_dchat(args.attention_tag_id, args.dws_wrapper)
+        payload = configure_dchat(args.dws_wrapper)
     except ConfigError as exc:
         _fail(str(exc))
     _emit(args, payload, ["DChat 已配置。" if payload["changed"] else "DChat 配置未变化。"])
@@ -66,9 +66,10 @@ def command_scan(args: Any) -> None:
         config = load_config(allow_missing=False)
         if not config.dchat.enabled:
             raise ConfigError("DChat 未启用；先运行 lifeos dchat configure")
+        project_rows = _project_rows(args)
         service = DChatService(
             DwsDChatAdapter(str(config.dchat.dws_wrapper)),
-            str(config.dchat.attention_tag_id),
+            {row["conversation_id"] for row in project_rows},
             limit=args.limit,
         )
         payload = store.write_scan(service.scan(_window(args)))
@@ -188,22 +189,21 @@ def _window_arguments(parser: argparse.ArgumentParser) -> None:
 def register_dchat_parser(domains: Any, data_dir: Path) -> None:
     dchat = domains.add_parser(
         "dchat",
-        help="归档 DChat 私聊与关注群聊，提供日报辅助证据",
+        help="归档 DChat 私聊与项目群聊，提供日报辅助证据",
         description=(
             "结构化类型为 p2p / extp2p 的私聊全部纳入；"
-            "群聊只在命中配置的 LifeOS 关注 tag id 时读取正文。"
-            "原始消息位于 Private Runtime，群聊项目关联由已注册项目清单派生。"
+            "群聊只在当前 Project Catalog 的 lifeos-project.json 中声明时读取正文。"
+            "原始消息位于 Private Runtime，采集范围与项目关联由同一批项目清单派生。"
         ),
         epilog=(
             "DChat 始终是 supporting evidence，不能单独证明完成、提交、推送、部署或上线。"
-            "命令不发送消息、不修改标签、不写 Work。"
+            "命令不发送消息、不修改 DChat、不写 Work。"
         ),
     )
     dchat.set_defaults(dchat_root=data_dir / "dchat", data_dir=data_dir)
     commands = dchat.add_subparsers(dest="command", required=True)
 
-    command = commands.add_parser("configure", help="配置关注 tag id 与批准的 dws wrapper（写入）")
-    command.add_argument("--attention-tag-id", required=True)
+    command = commands.add_parser("configure", help="配置批准的 dws wrapper（写入）")
     command.add_argument("--dws-wrapper", required=True)
     _json(command)
     command.set_defaults(handler=command_configure)

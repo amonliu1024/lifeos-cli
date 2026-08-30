@@ -1,10 +1,10 @@
 # DChat 证据
 
-DChat 是 Daily 的可选 supporting evidence，目标是补足发生在私聊与关注群沟通中的工作背景、反馈与协调。它不属于 Agent Sessions，也不是 Work、正式决策或交付终态 authority。
+DChat 是 Daily 的可选 supporting evidence，目标是补足发生在私聊与项目核心群沟通中的工作背景、反馈与协调。它不属于 Agent Sessions，也不是 Work、正式决策或交付终态 authority。
 
 ## 采集门
 
-1. 先运行 `lifeos dchat validate --json`。`config` 显示尚未配置时停止本分支并继续其他日报来源，不自行猜 tag id 或 wrapper；其他校验失败表示已有私有归档不可信，若会改变日报核心结论则保留 Pending。
+1. 先运行 `lifeos dchat validate --json`。`config` 显示尚未配置时停止本分支并继续其他日报来源，不自行猜 wrapper；其他校验失败表示已有私有归档不可信，若会改变日报核心结论则保留 Pending。
    若 DWS 返回 `client_ipc_forbidden`，或 debug 中出现 `workspace-server` socket 的 `Permission denied / Operation not permitted`，保持原命令和采集范围不变，仅申请允许访问本机 IPC 的沙箱外执行后重试。这个错误不能证明 D-Chat 未启动；不得因此启动、切换、读取或操作桌面客户端。
 2. 查询精确自然日窗口的 `lifeos dchat scans --from <window.from> --to <window.to> --json`。最新同窗口 scan 为 `complete` 且重新 `validate` 通过时复用；没有可复用 scan 时执行一次 `lifeos dchat scan`。`partial` 或失败不等于没有消息，先读取 warning，不能证明的范围保留为缺口。
 3. 读取无会话过滤的完整 `dchat index`。index 固定为 `evidence_level=supporting`，并给出纳入会话、消息数、由项目清单派生的项目关联、source scan 与完整性；`source_status=unknown` 时不得把查询结果当作完整窗口。
@@ -24,7 +24,7 @@ lifeos dchat pack \
   --json
 ```
 
-只有 `budget.omitted_messages=0` 才能声称该会话在当前窗口的已归档正文已读完；否则提高预算、继续缩小会话或保留省略边界。不要把整日所有聊天一次性装入上下文。会话范围只依据 DChat 返回的结构化 `type`：`p2p / extp2p` 一律作为正常私聊采集，不得根据账号名称、头像、发送者名称、消息内容或表达风格推断其为机器人、AI 或官方账号；只有 `type` 明确为 `official / p2bot / p2ai` 时才排除。未标记群聊只有 scope 元数据；不要用群名、活跃度、本人是否发言或关键词绕过 scope。
+只有 `budget.omitted_messages=0` 才能声称该会话在当前窗口的已归档正文已读完；否则提高预算、继续缩小会话或保留省略边界。不要把整日所有聊天一次性装入上下文。会话范围先依据 DChat 返回的结构化 `type`：`p2p / extp2p` 一律作为正常私聊采集，不得根据账号名称、头像、发送者名称、消息内容或表达风格推断其为机器人、AI 或官方账号；只有 `type` 明确为 `official / p2bot / p2ai` 时才排除。`channel / extchannel` 只有 VID 出现在当前有效项目清单中才读取正文；其他群聊只有 scope 元数据。不要用群名、活跃度、本人是否发言或关键词绕过 scope。
 
 消息原文只支持“某人在聊天中提出、反馈、协调或声称”。是否写入日报只按消息对当天工作主线的相关性判断，不按账号名称或推测身份过滤。仅有 DChat 时，正式决策、完成、提交、推送、部署、上线和目标环境验证一律降级为聊天层陈述，并尝试用 Work、Agent、Git、交付物或目标环境证据核对。
 

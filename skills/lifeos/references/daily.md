@@ -43,7 +43,7 @@ lifeos dchat index --from <window.from> --to <window.to> --json
 5. 读取窗口内全部 Work changes。它们证明 LifeOS 账本发生了什么变化，不自动证明对应项目已经交付。
 6. 如果有显式注册的 Git 仓库，先读目标窗口的 `git scans`。已有 `status=complete` 且通过 `git validate --scan` 的快照可以复用；没有快照、快照不完整或校验失败时，按需运行一次 `git scan`。Git scan 只读本地提交历史、写入私有证据快照，不修改仓库、不访问 remote、不写 Work。Git 不可用、没有注册仓库或扫描失败，不自动等于当天没有工作；只有当日报结论依赖 Git 且缺口影响事实时，才披露 pending 或提问。正文出现任何提交、推送、部署层级断言（含引用具体 commit 短 SHA）时，对应仓库窗口内必须有通过校验的快照，否则该断言降级为“会话陈述”。
 7. 本人主动提供的补录作为第三路证据；没有实质缺口时不为了凑齐输入而提问。
-8. DChat 已配置时，按 `dchat-evidence.md` 通过精确窗口 scan 和 validate 后读取完整 index；只对可能改变工作主线的会话渐进调用 pack。可读 scope 只采用 DChat 的结构化会话类型与关注 tag 判断，不按账号名称、头像或消息内容猜测身份，也不用群名、活跃度、本人是否发言或关键词扩大范围。
+8. DChat 已配置时，按 `dchat-evidence.md` 通过精确窗口 scan 和 validate 后读取完整 index；只对可能改变工作主线的会话渐进调用 pack。可读 scope 只采用 DChat 的结构化会话类型与当前项目清单中的群 VID，不按账号名称、头像或消息内容猜测身份，也不用群名、活跃度、本人是否发言或关键词扩大范围。
 
 完成标准：来源采集门通过；全窗口覆盖可信；partial/中断/导入等所有可能改变自然日事实的异常已有解释或 pending；Work changes 已读取；Git 检查门已执行（目标窗口 `git scans` 已查询）；使用 Git 时选中 scan 已通过校验且仓库失败/缺失边界已解释；DChat 已配置时其精确窗口 scan、完整性和项目清单冲突已处理，未配置时没有把缺失解释成“没有聊天工作”。
 
@@ -196,4 +196,4 @@ git_commit_ids: [<正文引用的 repo_key@完整 SHA>]
 
 ## 边界
 
-日报不生成周报、月报或复盘，不写 Obsidian；不关闭、改期或变更已有 Work 事实，也不替本人确认。Git 证据只读本地显式注册仓库，不上传、不访问 remote、不保存完整 diff、changed paths、author email 或未提交状态。DChat 只读结构化类型为 `p2p / extp2p` 的私聊和带关注 tag 的群聊，不发送消息、不改标签、不下载附件本体；DChat 声称的完成或上线必须由更高等级证据核对。
+日报不生成周报、月报或复盘，不写 Obsidian；不关闭、改期或变更已有 Work 事实，也不替本人确认。Git 证据只读本地显式注册仓库，不上传、不访问 remote、不保存完整 diff、changed paths、author email 或未提交状态。DChat 只读结构化类型为 `p2p / extp2p` 的私聊和当前项目清单声明的群聊，不发送消息、不修改 DChat、不下载附件本体；DChat 声称的完成或上线必须由更高等级证据核对。

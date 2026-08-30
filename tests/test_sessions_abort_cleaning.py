@@ -293,7 +293,10 @@ class RebuildAndOmissionTest(unittest.TestCase):
                 json=True,
                 sessions_root=Path(temporary) / "cli-sessions",
             )
-            with mock.patch("lifeos_sessions.cli._service", return_value=failing_service):
+            with mock.patch(
+                "lifeos_sessions.cli._sources",
+                return_value=["codex", "claude", "smartwork", "deepseek"],
+            ), mock.patch("lifeos_sessions.cli._service", return_value=failing_service):
                 with self.assertRaises(SystemExit) as raised:
                     command_rebuild(args)
             self.assertEqual(1, raised.exception.code)

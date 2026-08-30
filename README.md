@@ -54,8 +54,7 @@ lifeos capabilities
   "modules": {
     "dchat": {
       "enabled": false,
-      "dws_wrapper": null,
-      "attention_tag_id": null
+      "dws_wrapper": null
     },
     "sessions": {
       "sources": ["codex", "claude", "smartwork", "deepseek"]
@@ -90,14 +89,13 @@ lifeos project validate --all
 | Project Catalog | 未配置 | 至少一个可读的项目发现根 |
 | Git 证据 | 启用 | 本机可使用 `git` |
 | Sessions 来源 | 启用 | 已配置的来源目录存在 |
-| DChat 证据 | 禁用 | 已启用，并配置存在的本地 wrapper 和 tag ID |
+| DChat 证据 | 禁用 | 已启用，并配置存在的本地 wrapper；群聊范围来自项目清单 |
 | 项目清单中的 DChat / Cooper 来源 | 启用 | 内置 Schema 1 适配器 |
 
 无需手工编辑 JSON 即可启用 DChat：
 
 ```bash
 lifeos dchat configure \
-  --attention-tag-id <OPAQUE-TAG-ID> \
   --dws-wrapper </absolute/path/to/dws-wrapper>
 ```
 
@@ -214,7 +212,8 @@ lifeos git repos add --key example --root /path/to/repository
 lifeos git scan --from 2026-08-28 --to 2026-08-29 --json
 ```
 
-DChat 是按需启用的辅助证据：
+DChat 是按需启用的辅助证据。私聊按结构化会话类型采集；群聊只在当前有效
+`lifeos-project.json` 的 `sources.dchat.groups` 中声明时读取正文：
 
 ```bash
 lifeos dchat validate --json

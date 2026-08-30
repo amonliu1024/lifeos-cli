@@ -14,6 +14,7 @@
 
 - `lifeos reports path --json` 现在只读返回目标日在 Asia/Shanghai 的完整自然日窗口；已确认日报可以据此重新采集证据，无需覆盖日报或自行计算日期。
 - 项目关系改为从私人配置的发现根动态读取 `lifeos-project.json`：新项目无需先写 Work 即可被 Sessions、DChat 与 Git 识别，项目搬迁不再需要修复 Runtime 路径；Work 只按 `project_key` 保存个人跟踪覆盖层，并提供旧路径注册的一次性原子迁移。
+- DChat 群聊正文的采集范围与项目关联统一由当前 `lifeos-project.json` 中的群 VID 派生，只维护一份项目来源关系。
 
 ## v1.0.0
 

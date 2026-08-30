@@ -47,25 +47,25 @@ def message(key, timestamp, text):
 
 
 class DChatScopeTest(unittest.TestCase):
-    def test_scope_reads_all_direct_types_regardless_of_account_name_and_only_tagged_groups(self):
+    def test_scope_reads_all_direct_types_and_only_manifest_project_groups(self):
         chats = [
             {"vchannel_id": "dm", "type": "p2p", "name": "项目小助手"},
             {"vchannel_id": "ext-dm", "type": "extp2p", "name": "Official-looking account"},
-            {"vchannel_id": "project", "type": "channel", "tag_ids": ["lifeos"], "name": "Silent project"},
-            {"vchannel_id": "ops", "type": "channel", "tag_ids": [], "name": "Busy ops"},
-            {"vchannel_id": "bad-tags", "type": "channel", "name": "Missing tags"},
-            {"vchannel_id": "bot", "type": "p2bot", "tag_ids": ["lifeos"]},
+            {"vchannel_id": "project", "type": "channel", "name": "Silent project"},
+            {"vchannel_id": "ops", "type": "channel", "name": "Busy ops"},
+            {"vchannel_id": "other", "type": "channel", "name": "Other group"},
+            {"vchannel_id": "bot", "type": "p2bot"},
         ]
         messages = {
             key: [message(f"{key}-1", "2026-08-24T08:00:00+00:00", "synthetic")]
-            for key in ("dm", "ext-dm", "project", "ops", "bad-tags", "bot")
+            for key in ("dm", "ext-dm", "project", "ops", "other", "bot")
         }
         client = FakeDChatClient(chats, messages)
-        result = DChatService(client, "lifeos", limit=10).scan(
+        result = DChatService(client, {"project"}, limit=10).scan(
             TimeWindow.from_values("2026-08-24", "2026-08-25")
         )
 
-        self.assertEqual("partial", result["status"])
+        self.assertEqual("complete", result["status"])
         self.assertEqual({"dm", "ext-dm", "project"}, {call[0] for call in client.calls})
         self.assertEqual(3, result["summary"]["collect_body"])
         self.assertEqual(2, result["summary"]["metadata_only"])
@@ -79,7 +79,7 @@ class DChatScopeTest(unittest.TestCase):
         old_ms = int(datetime.fromisoformat("2026-08-23T23:59:59+08:00").timestamp() * 1000)
         chats = [
             {"vchannel_id": "old-dm", "type": "p2p", "latest_ts": old_ms},
-            {"vchannel_id": "old-group", "type": "channel", "tag_ids": ["lifeos"], "latest_ts": str(old_ms)},
+            {"vchannel_id": "old-group", "type": "channel", "latest_ts": str(old_ms)},
             {"vchannel_id": "at-start", "type": "p2p", "latest_ts": "2026-08-24T00:00:00+08:00"},
             {"vchannel_id": "after-window", "type": "p2p", "latest_ts": "2026-08-25T08:00:00+08:00"},
             {"vchannel_id": "missing", "type": "p2p"},
@@ -87,7 +87,7 @@ class DChatScopeTest(unittest.TestCase):
         ]
         client = FakeDChatClient(chats, {})
 
-        result = DChatService(client, "lifeos", limit=10).scan(
+        result = DChatService(client, {"old-group"}, limit=10).scan(
             TimeWindow.from_values("2026-08-24", "2026-08-25")
         )
 
@@ -112,7 +112,7 @@ class DChatScopeTest(unittest.TestCase):
                 message("m2", "2026-08-24T09:00:00+00:00", "two"),
             ]
         })
-        result = DChatService(client, "lifeos", limit=2).scan(
+        result = DChatService(client, set(), limit=2).scan(
             TimeWindow.from_values("2026-08-24", "2026-08-25")
         )
         row = result["conversations"][0]
@@ -126,7 +126,7 @@ class DChatScopeTest(unittest.TestCase):
                 message("same-2", "2026-08-24T08:00:00+00:00", "two"),
             ]
         })
-        result = DChatService(crowded, "lifeos", limit=2).scan(
+        result = DChatService(crowded, set(), limit=2).scan(
             TimeWindow.from_values("2026-08-24T15:59:59+08:00", "2026-08-24T16:00:01+08:00")
         )
         self.assertEqual("partial", result["status"])
@@ -142,7 +142,7 @@ class DChatScopeTest(unittest.TestCase):
                 ]
 
         client = RawClient([{"vchannel_id": "dm", "type": "p2p"}], {})
-        result = DChatService(client, "lifeos", limit=20).scan(
+        result = DChatService(client, set(), limit=20).scan(
             TimeWindow.from_values("2026-08-24", "2026-08-25")
         )
 
@@ -165,7 +165,7 @@ class DChatScopeTest(unittest.TestCase):
                 }]
 
         client = RawClient([{"vchannel_id": "dm", "type": "p2p"}], {})
-        result = DChatService(client, "lifeos", limit=20).scan(
+        result = DChatService(client, set(), limit=20).scan(
             TimeWindow.from_values("2026-08-28", "2026-08-29")
         )
 
@@ -190,7 +190,7 @@ class DChatStoreTest(unittest.TestCase):
             [{"vchannel_id": "dm", "type": "p2p", "name": "Synthetic Human"}],
             {"dm": [message("stable-key", "2026-08-24T08:00:00+00:00", text)]},
         )
-        return self.store.write_scan(DChatService(client, "lifeos", limit=10).scan(self.window))
+        return self.store.write_scan(DChatService(client, set(), limit=10).scan(self.window))
 
     def test_raw_revisions_are_immutable_and_views_are_supporting(self):
         first = self.scan("original")
@@ -226,18 +226,18 @@ class DChatStoreTest(unittest.TestCase):
         self.assertTrue(index["conversations"][0]["projects_confirmed"])
         self.assertEqual(["alpha", "beta"], index["conversations"][0]["project_candidates"])
 
-    def test_tag_removal_stops_reads_without_erasing_archived_body(self):
-        tagged = FakeDChatClient(
-            [{"vchannel_id": "group", "type": "channel", "tag_ids": ["lifeos"]}],
+    def test_manifest_removal_stops_reads_without_erasing_archived_body(self):
+        configured = FakeDChatClient(
+            [{"vchannel_id": "group", "type": "channel"}],
             {"group": [message("group-key", "2026-08-24T08:00:00+00:00", "kept")]},
         )
-        self.store.write_scan(DChatService(tagged, "lifeos", limit=10).scan(self.window))
-        untagged = FakeDChatClient(
-            [{"vchannel_id": "group", "type": "channel", "tag_ids": []}],
+        self.store.write_scan(DChatService(configured, {"group"}, limit=10).scan(self.window))
+        removed = FakeDChatClient(
+            [{"vchannel_id": "group", "type": "channel"}],
             {"group": [message("new-key", "2026-08-24T09:00:00+00:00", "must not read")]},
         )
-        self.store.write_scan(DChatService(untagged, "lifeos", limit=10).scan(self.window))
-        self.assertEqual([], untagged.calls)
+        self.store.write_scan(DChatService(removed, set(), limit=10).scan(self.window))
+        self.assertEqual([], removed.calls)
         start, end = self.window.query_bounds()
         display = self.window.to_dict()
         index = build_index(
@@ -348,14 +348,13 @@ class DChatConfigTest(unittest.TestCase):
             config_path = Path(directory) / "private" / "config.json"
             wrapper = Path(directory) / "dws-wrapper"
             wrapper.write_text("synthetic", encoding="utf-8")
-            first = configure_dchat("opaque-tag", str(wrapper), config_path)
-            second = configure_dchat("opaque-tag", str(wrapper), config_path)
+            first = configure_dchat(str(wrapper), config_path)
+            second = configure_dchat(str(wrapper), config_path)
             self.assertTrue(first["changed"])
             self.assertFalse(second["changed"])
-            self.assertNotIn("attention_tag_id", first)
             self.assertEqual(0o600, stat.S_IMODE(config_path.stat().st_mode))
             config = load_config(config_path, allow_missing=False)
-            self.assertEqual("opaque-tag", config.dchat.attention_tag_id)
+            self.assertEqual(str(wrapper), config.dchat.dws_wrapper)
 
     def test_dws_adapter_uses_export_files_without_requiring_executable_bit(self):
         with tempfile.TemporaryDirectory() as directory:
@@ -410,8 +409,8 @@ class DChatCLITest(unittest.TestCase):
             "if [[ \"$1\" == chat ]]; then\n"
             "  printf '%s' '{\"ok\":true,\"data\":{\"chats\":["
             "{\"vchannel_id\":\"dm\",\"type\":\"p2p\",\"name\":\"Synthetic DM\"},"
-            "{\"vchannel_id\":\"project\",\"type\":\"channel\",\"tag_ids\":[\"focus\"]},"
-            "{\"vchannel_id\":\"ops\",\"type\":\"channel\",\"tag_ids\":[]}]}}' > \"$last\"\n"
+            "{\"vchannel_id\":\"123456\",\"type\":\"channel\"},"
+            "{\"vchannel_id\":\"ops\",\"type\":\"channel\"}]}}' > \"$last\"\n"
             "elif [[ \"$4\" == dm ]]; then\n"
             "  printf '%s' '{\"ok\":true,\"data\":{\"messages\":[{\"key\":\"dm-1\",\"timestamp\":\"2026-08-24T08:00:00+00:00\",\"text\":\"synthetic direct\"}]}}' > \"$last\"\n"
             "else\n"
@@ -456,11 +455,9 @@ class DChatCLITest(unittest.TestCase):
 
     def test_public_cli_scan_index_pack_projects_usage_and_validate(self):
         configured = json.loads(self.run_lifeos(
-            "dchat", "configure", "--attention-tag-id", "focus",
-            "--dws-wrapper", str(self.wrapper), "--json",
+            "dchat", "configure", "--dws-wrapper", str(self.wrapper), "--json",
         ).stdout)
         self.assertTrue(configured["changed"])
-        self.assertNotIn("attention_tag_id", configured)
 
         scanned = json.loads(self.run_lifeos(
             "dchat", "scan", "--from", "2026-08-24", "--to", "2026-08-25", "--json",

@@ -24,6 +24,7 @@ $LIFEOS_HOME（默认 ~/.local/share/lifeos）
 - `lifeos_sessions.adapters.SESSION_SOURCES` 将受支持的来源名称映射到延迟加载的适配器工厂和来源根探测器。
 - `lifeos_projects.sources.PROJECT_SOURCE_ADAPTERS` 负责项目清单中来源特有字段的校验。
 - `lifeos_projects.catalog.ProjectCatalog` 从私人配置声明的根目录动态发现清单，隔离非法清单与同键冲突，并为 Work、Sessions、DChat 和 Git 提供唯一项目目录 seam。
+- DChat 扫描从 Project Catalog 派生群 VID 并集；同一份清单关系同时决定群正文采集与项目索引，不用 Runtime 映射维护第二套 scope。
 - `lifeos_config` 负责本机私有模块设置和无副作用的能力检查。
 
 因此，新增内置模块必须在同一个仓库内同时完成代码、注册、测试和文档；是否在某台机器上启用该模块，则始终是本机私有配置的选择。
@@ -82,6 +83,8 @@ Project Catalog 扫描全部配置根，不跟随符号链接，也不从 Work �
 ```
 
 来源适配器保留来源身份；输入不完整或未知时直接报告，不做猜测。Sessions、Git 和 DChat 证据不会写入 Work。日报工作流可以组合这些证据，但候选工作只有经过用户单独授权后才能成为 Work 事实。
+
+DChat 的 `p2p / extp2p` 私聊全部进入正文采集；`channel / extchannel` 只有 VID 至少由一份当前有效项目清单声明时进入。多个项目声明同一 VID 时只采集一次，索引保留全部项目关联；VID 从全部清单退出只停止后续正文读取，既有不可变 revision 继续保留。
 
 Sessions checkpoint 的 `cache_generation` 由来源 Adapter revision、shared extraction revision 和 Slice Schema 共同决定。来源特有解析变化只提升对应 Adapter revision，共享提取或判断语义变化提升 shared extraction revision；验证重扫是否生效应检查扫描报告的 `files_read` 与 `reused`，不能只依据成功退出码。
 

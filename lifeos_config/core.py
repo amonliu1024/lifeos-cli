@@ -27,7 +27,6 @@ class ConfigError(ValueError):
 class DChatConfig:
     enabled: bool
     dws_wrapper: Optional[str]
-    attention_tag_id: Optional[str]
 
 
 @dataclass(frozen=True)
@@ -59,7 +58,6 @@ def default_payload() -> dict[str, Any]:
             "dchat": {
                 "enabled": False,
                 "dws_wrapper": None,
-                "attention_tag_id": None,
             },
             "sessions": {"sources": list(SUPPORTED_SESSION_SOURCES)},
             "project_sources": {"enabled": ["dchat", "cooper"]},
@@ -161,18 +159,15 @@ def normalize_config(payload: Any, path: Path, *, exists: bool) -> LifeOSConfig:
     dchat = _object(
         modules.get("dchat"),
         "modules.dchat",
-        {"enabled", "dws_wrapper", "attention_tag_id"},
-        {"enabled", "dws_wrapper", "attention_tag_id"},
+        {"enabled", "dws_wrapper"},
+        {"enabled", "dws_wrapper"},
     )
     enabled = dchat.get("enabled")
     if not isinstance(enabled, bool):
         raise ConfigError("modules.dchat.enabled 必须是布尔值")
     wrapper = _optional_text(dchat.get("dws_wrapper"), "modules.dchat.dws_wrapper")
-    attention_tag_id = _optional_text(
-        dchat.get("attention_tag_id"), "modules.dchat.attention_tag_id"
-    )
-    if enabled and (wrapper is None or attention_tag_id is None):
-        raise ConfigError("启用 dchat 时必须配置 dws_wrapper 与 attention_tag_id")
+    if enabled and wrapper is None:
+        raise ConfigError("启用 dchat 时必须配置 dws_wrapper")
 
     sessions = _object(
         modules.get("sessions"),
@@ -200,7 +195,7 @@ def normalize_config(payload: Any, path: Path, *, exists: bool) -> LifeOSConfig:
         path=path,
         exists=exists,
         timezone=timezone,
-        dchat=DChatConfig(enabled, wrapper, attention_tag_id),
+        dchat=DChatConfig(enabled, wrapper),
         session_sources=_names(
             sessions.get("sources"),
             "modules.sessions.sources",
@@ -310,14 +305,10 @@ def _locked_config(path: Path):
 
 
 def configure_dchat(
-    attention_tag_id: str,
     dws_wrapper: str,
     value: Optional[str | os.PathLike[str]] = None,
 ) -> dict[str, Any]:
-    tag = str(attention_tag_id or "").strip()
     wrapper = Path(dws_wrapper).expanduser()
-    if not tag:
-        raise ConfigError("attention_tag_id 不能为空")
     if not wrapper.is_absolute() or not wrapper.is_file():
         raise ConfigError("dws_wrapper 必须是存在的绝对文件")
     path = resolve_config_path(value)
@@ -327,7 +318,6 @@ def configure_dchat(
         desired: dict[str, Any] = {
             "enabled": True,
             "dws_wrapper": str(wrapper),
-            "attention_tag_id": tag,
         }
         changed = modules.get("dchat") != desired or not path.exists()
         modules["dchat"] = desired

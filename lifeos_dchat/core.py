@@ -4,7 +4,7 @@ from __future__ import annotations
 
 from dataclasses import dataclass
 from datetime import date, datetime, time, timedelta, timezone
-from typing import Any, Dict, List, Mapping, Sequence
+from typing import Any, Dict, Iterable, List, Mapping, Sequence
 from zoneinfo import ZoneInfo
 
 from .client import DChatClient, DChatClientError
@@ -79,13 +79,13 @@ class TimeWindow:
 class DChatService:
     """Own one deterministic scan; persistence remains the store's job."""
 
-    def __init__(self, client: DChatClient, attention_tag_id: str, *, limit: int = DEFAULT_LIMIT):
-        if not str(attention_tag_id or "").strip():
-            raise DChatError("attention_tag_id 不能为空")
+    def __init__(self, client: DChatClient, project_group_ids: Iterable[str], *, limit: int = DEFAULT_LIMIT):
         if isinstance(limit, bool) or not isinstance(limit, int) or limit < 2:
             raise DChatError("limit 必须是大于 1 的整数")
         self.client = client
-        self.attention_tag_id = str(attention_tag_id)
+        self.project_group_ids = {
+            str(value).strip() for value in project_group_ids if str(value).strip()
+        }
         self.limit = limit
 
     def scan(self, window: TimeWindow) -> Dict[str, Any]:
@@ -109,7 +109,7 @@ class DChatService:
                     "warnings": ["conversation_id_missing"], "metadata": dict(raw_chat), "messages": [],
                 })
                 continue
-            scope, warnings = scope_for(raw_chat, self.attention_tag_id)
+            scope, warnings = scope_for(raw_chat, self.project_group_ids)
             row: Dict[str, Any] = {
                 "conversation_id": cid,
                 "type": conversation_type(raw_chat),

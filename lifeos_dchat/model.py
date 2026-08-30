@@ -9,7 +9,7 @@ from __future__ import annotations
 import hashlib
 import json
 from datetime import datetime, timezone
-from typing import Any, Mapping, Optional
+from typing import Any, Collection, Mapping, Optional
 
 
 DCHAT_SCHEMA_VERSION = 1
@@ -114,18 +114,15 @@ def timestamp_field_types(message: Mapping[str, Any]) -> str:
     return ",".join(sorted(fields)[:8]) or "none"
 
 
-def scope_for(chat: Mapping[str, Any], attention_tag_id: str) -> tuple[str, list[str]]:
-    """Return collect_body / metadata_only / excluded without guessing fields."""
+def scope_for(chat: Mapping[str, Any], project_group_ids: Collection[str]) -> tuple[str, list[str]]:
+    """Select bodies from structural types and manifest-owned project groups."""
 
     kind = conversation_type(chat)
     if kind in DIRECT_TYPES:
         return "collect_body", []
     if kind in GROUP_TYPES:
-        tags = chat.get("tag_ids")
-        if not isinstance(tags, list):
-            return "metadata_only", ["tag_ids_missing_or_invalid"]
-        normalized = {str(value) for value in tags if value is not None}
-        return ("collect_body", []) if attention_tag_id in normalized else ("metadata_only", [])
+        cid = conversation_id(chat)
+        return ("collect_body", []) if cid in project_group_ids else ("metadata_only", [])
     if kind in EXCLUDED_TYPES:
         return "excluded", []
     return "excluded", ["unsupported_conversation_type"]

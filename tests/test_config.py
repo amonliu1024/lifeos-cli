@@ -69,7 +69,6 @@ class ConfigCLITest(unittest.TestCase):
         payload["modules"]["dchat"] = {
             "enabled": True,
             "dws_wrapper": str(wrapper),
-            "attention_tag_id": "synthetic-tag",
         }
         self.config_path.parent.mkdir()
         self.config_path.write_text(json.dumps(payload), encoding="utf-8")
@@ -117,7 +116,7 @@ class ConfigValidationTest(unittest.TestCase):
         with self.assertRaisesRegex(ConfigError, "未知字段"):
             normalize_config(payload, Path("/synthetic"), exists=True)
 
-    def test_enabled_dchat_requires_both_private_values(self):
+    def test_enabled_dchat_requires_wrapper(self):
         payload = default_payload()
         payload["modules"]["dchat"]["enabled"] = True
         with self.assertRaisesRegex(ConfigError, "必须配置"):
