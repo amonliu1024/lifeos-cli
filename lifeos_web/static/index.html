@@ -1,0 +1,45 @@
+<!doctype html>
+<html lang="zh-CN">
+  <head>
+    <meta charset="utf-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1">
+    <meta name="color-scheme" content="light">
+    <title>LifeOS</title>
+    <link rel="stylesheet" href="/assets/app.css">
+    <script src="/assets/app.js" defer></script>
+  </head>
+  <body>
+    <header class="topbar">
+      <a class="brand" href="#work" data-tab="work" aria-label="LifeOS 工作台">
+        <img class="brand-logo" src="/assets/lifeos-logo.svg" alt="LifeOS">
+      </a>
+      <nav class="tabs" aria-label="主要视图">
+        <button class="tab is-active" data-tab="work">工作</button>
+        <button class="tab" data-tab="daily">日报</button>
+        <button class="tab" data-tab="ideas">闪念</button>
+        <button class="tab" data-tab="achievements">成果</button>
+      </nav>
+      <div class="system-state">
+        <span class="pulse" aria-hidden="true"></span>
+        <span id="updated-at">读取中</span>
+      </div>
+    </header>
+
+    <main id="app" class="workspace" aria-live="polite">
+      <section class="skeleton-screen" aria-label="正在读取本地账本">
+        <span class="skeleton skeleton-kicker"></span>
+        <div class="skeleton-tabs"><span></span><span></span></div>
+        <div class="skeleton-card"><span></span><span></span><span></span></div>
+        <div class="skeleton-card"><span></span><span></span><span></span></div>
+        <div class="skeleton-card"><span></span><span></span><span></span></div>
+      </section>
+    </main>
+
+    <aside id="detail-drawer" class="drawer" role="dialog" aria-modal="true" aria-hidden="true" aria-label="条目详情" inert>
+      <button class="drawer-close" data-action="close-drawer" aria-label="关闭详情">×</button>
+      <div id="drawer-content"></div>
+    </aside>
+    <div id="drawer-scrim" class="drawer-scrim" data-action="close-drawer"></div>
+    <div id="toast" class="toast" role="status" aria-live="polite"></div>
+  </body>
+</html>

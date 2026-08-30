@@ -61,6 +61,12 @@ def _project(domains: Any, context: ModuleContext) -> None:
     register_project_parser(domains)
 
 
+def _web(domains: Any, context: ModuleContext) -> None:
+    from lifeos_web.cli import register_web_parser
+
+    register_web_parser(domains, context.data_dir)
+
+
 COMMAND_MODULES = (
     CommandModule("config", _config),
     CommandModule("capabilities", _capabilities),
@@ -69,6 +75,7 @@ COMMAND_MODULES = (
     CommandModule("sessions", _sessions),
     CommandModule("reports", _reports),
     CommandModule("project", _project),
+    CommandModule("web", _web),
 )
 
 

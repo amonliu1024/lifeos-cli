@@ -104,6 +104,15 @@ lifeos work task-reschedule --help
 | `lifeos dchat` | 按需启用的 DChat 证据，通过显式配置的本机 wrapper 工作 |
 | `lifeos config` | Git 外私人配置的初始化与校验 |
 | `lifeos capabilities` | 无副作用地查看本机哪些能力已就绪、已禁用或不可用 |
+| `lifeos web` | 在本机回环地址启动只读工作台，浏览工作、日报、闪念与成果 |
+
+## 只读 Web 工作台
+
+```bash
+lifeos web serve --open
+```
+
+工作台只监听本机回环地址，默认打开 `http://localhost:8787/`。顶部四个 Tab 分别浏览工作、日报、闪念和成果；工作页默认隐藏完成记录，日报页可以显式交给系统默认应用打开原文。页面不提供 Agent、编辑或状态流转，也不建立第二套数据：每次刷新都通过现有 Work 与 Reports 读取入口取得当前事实。
 
 ## 工作模型
 
@@ -282,7 +291,7 @@ lifeos --help
 PYTHONPYCACHEPREFIX=/tmp/lifeos-pycache \
   python3 -m compileall -q \
   lifeos.py lifeos_modules.py lifeos_config lifeos_projects lifeos_work \
-  lifeos_sessions lifeos_git lifeos_dchat lifeos_reports tests
+  lifeos_sessions lifeos_git lifeos_dchat lifeos_reports lifeos_web tests
 python3 lifeos.py --help
 python3 lifeos.py capabilities --json
 python3 lifeos.py project --help

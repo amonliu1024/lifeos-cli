@@ -79,6 +79,7 @@ ROOT_EPILOG = """领域边界：
   git      只读本地 Git 提交，维护日报辅助证据快照；不修改仓库、remote、Work 或日报正文。
   dchat    只读 p2p / extp2p 私聊与项目清单群聊，维护私有原始证据；不发送消息、修改 DChat 或写 Work。
   reports  日报落点、frontmatter 与确认状态；正文由 lifeos Skill 的 Daily 分支维护。
+  web      只读本地工作台；只监听回环地址，不写 Work、日报或其它 Runtime。
 
 所有时间窗口使用半开区间 [from, to)；具体参数、默认值和写入边界以对应子命令 --help 为准。"""
 

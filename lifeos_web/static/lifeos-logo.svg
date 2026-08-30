@@ -1,0 +1,13 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 440 160" role="img" aria-labelledby="title desc">
+  <title id="title">LifeOS</title>
+  <desc id="desc">LifeOS wordmark with a layered O representing project facts, personal work, and supporting evidence.</desc>
+  <g fill="#15181B" font-family="Avenir Next, Helvetica Neue, Arial, sans-serif" font-weight="500">
+    <text x="20" y="120" font-size="128" letter-spacing="-6">Life</text>
+    <text x="346" y="118" font-size="122" letter-spacing="-4">S</text>
+  </g>
+  <g transform="translate(288 76)" fill="none" stroke="#15181B" stroke-width="6.5" stroke-linecap="round">
+    <circle r="46" stroke-dasharray="254 35" transform="rotate(-58)"/>
+    <circle r="33" stroke-dasharray="156 51" transform="rotate(28)"/>
+    <circle r="20" stroke-dasharray="84 42" transform="rotate(148)"/>
+  </g>
+</svg>
