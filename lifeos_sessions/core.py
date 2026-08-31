@@ -992,7 +992,6 @@ class SessionsService:
         selected_sources = list(dict.fromkeys(selected_sources))
         if apply and (
             set(selected_sources) != set(self.adapters)
-            or set(selected_sources) != {"codex", "claude", "smartwork", "deepseek"}
             or includes
         ):
             raise SessionError("rebuild --apply requires all registered sources and no --include")

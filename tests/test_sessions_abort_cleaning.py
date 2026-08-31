@@ -235,7 +235,7 @@ class RebuildAndOmissionTest(unittest.TestCase):
             }
             failed_adapters = {
                 source: _FakeAdapter(source, "failed" if source == "claude" else "complete")
-                for source in ("codex", "claude", "smartwork", "deepseek")
+                for source in ("codex", "claude", "smartwork", "deepseek", "pi")
             }
             service = SessionsService(failed_adapters, active)
             result = service.rebuild(WINDOW, sources=list(failed_adapters), apply=True)
@@ -262,7 +262,7 @@ class RebuildAndOmissionTest(unittest.TestCase):
                 '{"schema_version":1,"keep_slices_days":null,"fts_days":null}',
                 encoding="utf-8",
             )
-            adapters = {source: _FakeAdapter(source) for source in ("codex", "claude", "smartwork", "deepseek")}
+            adapters = {source: _FakeAdapter(source) for source in ("codex", "claude", "smartwork", "deepseek", "pi")}
             result = SessionsService(adapters, active).rebuild(
                 WINDOW, sources=list(adapters), apply=True
             )
@@ -295,7 +295,7 @@ class RebuildAndOmissionTest(unittest.TestCase):
             )
             with mock.patch(
                 "lifeos_sessions.cli._sources",
-                return_value=["codex", "claude", "smartwork", "deepseek"],
+                return_value=["codex", "claude", "smartwork", "deepseek", "pi"],
             ), mock.patch("lifeos_sessions.cli._service", return_value=failing_service):
                 with self.assertRaises(SystemExit) as raised:
                     command_rebuild(args)

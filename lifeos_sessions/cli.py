@@ -533,7 +533,7 @@ def register_sessions_parser(domains: Any, data_dir: Path) -> None:
         help="读取来源并写入窗口内的 Slice（Turn 粒度）",
         description=(
             "写入私有 Sessions 派生存储，不改来源日志。必须提供带时区 ISO 8601 的"
-            "半开窗口 [from, to)；--source 可重复，all 等价于三个 Agent 来源。"
+            "半开窗口 [from, to)；--source 可重复，all 等价于全部已启用 Agent 来源。"
             "--include 仅限制本次窄扫描，不建立持久 scope。"
         ),
         epilog=(
@@ -544,7 +544,7 @@ def register_sessions_parser(domains: Any, data_dir: Path) -> None:
     )
     command.add_argument(
         "--source", action="append", choices=[*SOURCES, "all"], required=True,
-        help="可重复；all 展开为 codex、claude、smartwork、deepseek",
+        help=f"可重复；all 展开为全部已启用来源（支持：{', '.join(SOURCES)}）",
     )
     command.add_argument(
         "--from", dest="from_value", required=True, metavar="ISO-8601",
@@ -603,7 +603,7 @@ def register_sessions_parser(domains: Any, data_dir: Path) -> None:
         help="全量重扫到 staging；默认预演，--apply 才替换 active Sessions",
         description=(
             "从来源文件构建临时 staging Store 并 validate；不加 --apply 时 active Sessions"
-            " 保持不变。apply 必须同时覆盖 codex、claude、smartwork、deepseek（或 --source all），"
+            " 保持不变。apply 必须同时覆盖私有配置中全部已启用来源（或 --source all），"
             "且不能使用 --include；校验或任一来源失败都不切换。"
         ),
         epilog=(
@@ -613,7 +613,7 @@ def register_sessions_parser(domains: Any, data_dir: Path) -> None:
     )
     command.add_argument(
         "--source", action="append", choices=[*SOURCES, "all"], required=True,
-        help="可重复；all 展开为 codex、claude、smartwork、deepseek；--apply 要求三者全量",
+        help=f"可重复；all 展开为全部已启用来源（支持：{', '.join(SOURCES)}）；--apply 要求全量",
     )
     command.add_argument(
         "--from", dest="from_value", required=True, metavar="ISO-8601",
@@ -629,7 +629,7 @@ def register_sessions_parser(domains: Any, data_dir: Path) -> None:
     )
     command.add_argument(
         "--apply", action="store_true",
-        help="危险写入：三来源全量且无 --include 时，校验通过后原子切换并备份旧树",
+        help="危险写入：全部已启用来源且无 --include 时，校验通过后原子切换并备份旧树",
     )
     command.add_argument(
         "--json", action="store_true",

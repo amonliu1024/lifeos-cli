@@ -5,7 +5,7 @@
 ## 来源采集门
 
 - `index`、`list` 和 `pack` 查询当前私有派生存储，不读取来源应用。结构完整但 Activity 为零的 index，不能证明来源窗口已经扫描。
-- Daily 复用的 scan 必须与 `begin` 的窗口完全一致，`status=complete` 或 `status=partial`，`manifest_valid=true`，列出 `codex`、`claude`、`smartwork`、`deepseek` 四个来源，并且没有来源为 `failed`。复用前校验其 `scan_id`。`partial` 表示已保留证据，但存在不完整 Slice 或来源告警；可以继续使用，但必须审计并披露缺口边界。
+- Daily 复用的 scan 必须与 `begin` 的窗口完全一致，`status=complete` 或 `status=partial`，`manifest_valid=true`，列出私有配置中全部已启用 Sessions 来源，并且没有来源为 `failed`。复用前校验其 `scan_id`。`partial` 表示已保留证据，但存在不完整 Slice 或来源告警；可以继续使用，但必须审计并披露缺口边界。
 - 没有可复用 scan 时，执行一次精确窗口的 `sessions scan --source all` 并校验返回的 scan。来源缺失、失败或不可读应标记 Pending，不能当作当天没有工作。partial scan 继续进入完整 index 和异常审计；只有覆盖范围或告警可能改变报告事实时才停止。只有全来源 scan 成功、index 完整，并明确确认 partial 告警不会隐藏目标日工作时，才能得出 Activity 为零的结论。
 
 ## 全窗口粒度

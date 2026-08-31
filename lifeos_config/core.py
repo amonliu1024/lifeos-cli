@@ -12,9 +12,11 @@ from pathlib import Path
 from typing import Any, Mapping, Optional
 from zoneinfo import ZoneInfo, ZoneInfoNotFoundError
 
+from lifeos_sessions.adapters import SESSION_SOURCE_NAMES
+
 
 CONFIG_SCHEMA_VERSION = 1
-SUPPORTED_SESSION_SOURCES = ("codex", "claude", "smartwork", "deepseek")
+SUPPORTED_SESSION_SOURCES = SESSION_SOURCE_NAMES
 SUPPORTED_PROJECT_SOURCES = ("dchat", "cooper")
 DEFAULT_PROJECT_EXCLUDES = (".git", ".venv", "archive", "node_modules")
 

@@ -222,7 +222,7 @@ lifeos reports validate
       "dws_wrapper": null
     },
     "sessions": {
-      "sources": ["codex", "claude", "smartwork", "deepseek"]
+      "sources": ["codex", "claude", "smartwork", "deepseek", "pi"]
     },
     "project_sources": {
       "enabled": ["dchat", "cooper"]

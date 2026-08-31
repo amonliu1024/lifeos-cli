@@ -123,6 +123,10 @@ class ConfigValidationTest(unittest.TestCase):
             normalize_config(payload, Path("/synthetic"), exists=True)
 
     def test_source_names_are_unique_and_known(self):
+        self.assertEqual(
+            ["codex", "claude", "smartwork", "deepseek", "pi"],
+            default_payload()["modules"]["sessions"]["sources"],
+        )
         payload = default_payload()
         payload["modules"]["sessions"]["sources"] = ["codex", "codex"]
         with self.assertRaisesRegex(ConfigError, "重复"):

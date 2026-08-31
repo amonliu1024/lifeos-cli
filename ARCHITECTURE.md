@@ -91,6 +91,8 @@ DChat 的 `p2p / extp2p` 私聊全部进入正文采集；`channel / extchannel`
 
 Sessions checkpoint 的 `cache_generation` 由来源 Adapter revision、shared extraction revision 和 Slice Schema 共同决定。来源特有解析变化只提升对应 Adapter revision，共享提取或判断语义变化提升 shared extraction revision；验证重扫是否生效应检查扫描报告的 `files_read` 与 `reused`，不能只依据成功退出码。
 
+Pi Adapter 读取 `~/.pi/agent/sessions` 的 v2/v3 树形 JSONL，以原生 user message ID 作为 Turn 身份，通过 `parentId` 归并真实分支事件；compaction、branch summary、扩展注入和 thinking 不进入正文。它与 Codex、Claude、SmartWork、DeepSeek 共用同一 Slice、checkpoint 与清洗接口，不建立 Pi 专用存储。
+
 ## 安全属性
 
 - 配置 Schema 拒绝未知字段和疑似凭据字段，不充当通用秘密存储。
