@@ -12,7 +12,7 @@ LifeOS 以一个 Python distribution 和同版本的 `skills/lifeos/` 交付。�
 
 正式 `vX.Y.Z` Tag 只指向完成候选核验的 Commit；Push 和 Tag 分别授权。新增制品渠道前先确认消费者、上传入口和回滚方式，本 Repo 不假定 PyPI 或自动发布。
 
-SmartWork 与 cc-switch 分别使用 `scripts/sync-to-smartwork.sh` 和 `scripts/sync-to-ccswitch.sh`。两个入口默认执行 `--check`，只报告目标缺失或与源码的差异；确认精确目标、授权和可恢复副本后，显式传入 `--apply` 才会同步并删除目标中的漂移文件。应用完成后脚本会再次比较源码与目标；源码验证、CLI 安装和 Skill 同步不能互相证明。
+分别运行 `scripts/sync-to-smartwork.sh` 和 `scripts/sync-to-ccswitch.sh`，将仓库中的完整 LifeOS Skill 同步到 SmartWork 和 cc-switch，并删除目标中的漂移文件。源码验证、CLI 安装和 Skill 同步不能互相证明。
 
 ## 恢复
 
