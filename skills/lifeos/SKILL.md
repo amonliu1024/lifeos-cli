@@ -15,6 +15,8 @@ Runtime authority 默认位于 `~/.local/share/lifeos/`，私人配置位于 `~/
 
 项目静态身份与核心协作入口由各项目根 `lifeos-project.json` 持有；项目当前位置由 Git 外私人配置声明的发现根动态形成 Project Catalog，Work Runtime 只按 `project_key` 保存个人跟踪状态。Work 事实只通过 `lifeos work` 读写；Sessions、DChat 与 Git 的项目归属由 Catalog 即时派生，不另设维护入口；日报只通过 `lifeos reports` 准备、写入和确认。账本授权不等于修改项目正式状态、代码、部署、发送消息或产生其他外部副作用。
 
+核验 Sessions 或 Reports 现状时，用 `sessions usage`、`sessions list --source <来源>`、`reports list/path/validate` 等只读入口直接观察；`sessions scans` 空结果只表示没有匹配的 manifest，不表示没有会话或采集未执行。先按来源实际发生时间选窗口，不把扫描窗口不存在等同于采集缺席。
+
 ## 分流
 
 | 请求 | 加载与执行 |
