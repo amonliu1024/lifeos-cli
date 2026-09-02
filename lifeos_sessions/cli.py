@@ -9,6 +9,7 @@ from pathlib import Path
 from typing import Any, Dict, Iterable, List
 
 from .core import SessionError, SessionsService, TimeWindow, canonical_json
+from .activity_ids import ACTIVITY_ID
 from .pack import (
     DEFAULT_INDEX_MAX_BYTES,
     DEFAULT_MAX_BYTES,
@@ -453,6 +454,12 @@ def command_projects(args: Any) -> None:
 
 def command_pack(args: Any) -> None:
     try:
+        invalid_activity = next(
+            (value for value in (args.activity or ()) if not ACTIVITY_ID.fullmatch(value)),
+            None,
+        )
+        if invalid_activity:
+            raise ValueError(f"--activity 格式非法：{invalid_activity}")
         window = TimeWindow.from_values(args.from_value, args.to_value)
         result = build_analysis_pack(
             SessionsStore(args.sessions_root),

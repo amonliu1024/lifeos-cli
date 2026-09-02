@@ -200,9 +200,13 @@ lifeos reports begin --day 2026-08-28 --json     # 建立草稿；已确认的�
 lifeos reports write --day 2026-08-28 --body-file /tmp/daily.md
 lifeos reports confirm --day 2026-08-28
 lifeos reports validate
+lifeos reports migrate-activity-ids              # 只读预演旧长 Activity ID 迁移
+lifeos reports migrate-activity-ids --apply      # 备份后只迁移历史日报 ID
 ```
 
 `reports path --json` 是只读状态入口，返回该日在 Asia/Shanghai 的完整自然日窗口；已确认日报需要重新采集证据时直接使用这个窗口，不必覆盖日报。
+
+Activity 使用 `ACT-` 加 24 位 Base32 的稳定短 ID。它仍由来源、会话和 Slice 聚合内容确定；旧版完整 SHA-256 Activity ID 不再被 index、pack 或 reports 接受。升级已有 Runtime 时，先预演再应用 `reports migrate-activity-ids`：命令直接转换旧摘要并检查碰撞，不重新采集会话内容，apply 前会在 Runtime `backups/` 中保存完整 Reports 备份。
 
 ## Agent Skill
 

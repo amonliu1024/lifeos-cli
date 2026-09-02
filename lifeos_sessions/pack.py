@@ -26,6 +26,7 @@ from typing import Any, Dict, Iterable, List, Mapping, Optional, Sequence, Tuple
 from zoneinfo import ZoneInfo
 
 from .core import TimeWindow, canonical_json
+from .activity_ids import activity_id, ensure_unique_activity_ids
 from .projects import ProjectMap
 from .semantics import (
     CONTENT_LOSS_CODES,
@@ -474,7 +475,7 @@ def _cluster_facts(
         turn_completion = "completed"
 
     return {
-        "activity_id": _stable_id("ACT", source, conversation_id, *slice_ids),
+        "activity_id": activity_id(source, conversation_id, *slice_ids),
         "source": source,
         "conversation_id": conversation_id,
         "title": title,
@@ -642,6 +643,10 @@ def build_activity_index(
     all_facts, suppressed = _partition_suppressed(all_facts)
     if project:
         all_facts = [facts for facts in all_facts if facts["resolution"].project_key == project]
+    try:
+        ensure_unique_activity_ids(item["activity_id"] for item in all_facts)
+    except ValueError as exc:
+        raise ValueError(f"无法生成 Activity 集合：{exc}") from exc
     all_facts.sort(key=lambda item: (str(item["started_at"]), str(item["activity_id"])))
 
     # Retention may already have removed evidence inside this window.  A
@@ -1108,6 +1113,15 @@ def build_analysis_pack(
         _cluster_facts(cluster, resolved_map)
         for cluster in _cluster_slices(slices, gap_ms=gap_ms)
     ]
+    collision_scope = [
+        facts
+        for facts in all_facts
+        if not project or facts["resolution"].project_key == project
+    ]
+    try:
+        ensure_unique_activity_ids(facts["activity_id"] for facts in collision_scope)
+    except ValueError as exc:
+        raise ValueError(f"无法生成 Activity 集合：{exc}") from exc
     drop = _assign_excerpts([facts for facts in all_facts if facts["readable"]])
     for facts in all_facts:
         if project and facts["resolution"].project_key != project:

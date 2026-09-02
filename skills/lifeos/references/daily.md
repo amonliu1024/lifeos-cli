@@ -187,7 +187,7 @@ Daily 发现“后续要做”只决定日报如何表达。只有本人另外�
 
 使用 `lifeos reports write` 写入既有 draft，不直接编辑 `begin` 返回路径；正文文件只含 Markdown，frontmatter 由 CLI 拥有，字段与选项以 `--help` 为准。
 
-计数与 ID 的口径：`activity_ids` 是第二节那份完整 index 的去重 Activity ID，`sessions_partial` / `sessions_interrupted` / `sessions_omitted` 同样只来自这一份 index，按 `session-evidence.md` 的定义取值；`work_event_ids`、`git_commit_ids` 和 `git_commits` 只记正文实际引用的对象。`git_commit_ids` 使用稳定的 `repo_key@完整 SHA`，不使用 LifeOS 另造的 per-commit ref；`project_key` 在 Git scan 时由当前 Project Catalog 即时解析，不复制进日报 ID。
+计数与 ID 的口径：`activity_ids` 是第二节那份完整 index 的去重 Activity ID，格式为 `ACT-` 加 24 位 Base32；`sessions_partial` / `sessions_interrupted` / `sessions_omitted` 同样只来自这一份 index，按 `session-evidence.md` 的定义取值；`work_event_ids`、`git_commit_ids` 和 `git_commits` 只记正文实际引用的对象。`git_commit_ids` 使用稳定的 `repo_key@完整 SHA`，不使用 LifeOS 另造的 per-commit ref；`project_key` 在 Git scan 时由当前 Project Catalog 即时解析，不复制进日报 ID。
 
 本人明确确认后才运行 `lifeos reports confirm --day <YYYY-MM-DD>`，随后运行 `lifeos reports validate`。
 

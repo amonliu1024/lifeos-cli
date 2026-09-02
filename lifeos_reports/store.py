@@ -11,14 +11,22 @@ from __future__ import annotations
 
 import contextlib
 import fcntl
+import json
 import os
 import re
+import shutil
 import stat
 import tempfile
 from datetime import date, datetime, time, timedelta
 from pathlib import Path
 from typing import Any, Dict, Iterator, List, Optional, Tuple
 from zoneinfo import ZoneInfo
+
+from lifeos_sessions.activity_ids import (
+    ACTIVITY_ID,
+    LEGACY_ACTIVITY_ID,
+    migrate_legacy_activity_id,
+)
 
 
 TIMEZONE = ZoneInfo("Asia/Shanghai")
@@ -67,6 +75,10 @@ REQUIRED_KEYS = (
 
 DAY_NAME = re.compile(r"^(\d{4}-\d{2}-\d{2})\.md$")
 SUPERSEDED_NAME = re.compile(r"^(\d{4}-\d{2}-\d{2})\.superseded-[^/]+\.md$")
+ACTIVITY_ID_MIGRATION_MARKER = ".reports-activity-id-migration.json"
+ACTIVITY_ID_MIGRATION_OPERATION = "reports-short-activity-ids"
+ACTIVITY_ID_MIGRATION_STAGING_PREFIX = ".lifeos-reports-migration-"
+ACTIVITY_ID_MIGRATION_BACKUP_PREFIX = "migrate-short-activity-ids-"
 KEY_LINE = re.compile(r"^([a-z][a-z0-9_]*):[ \t]*(.*)$")
 LIST_ITEM = re.compile(r"^[ \t]+-[ \t]+(.*)$")
 
@@ -269,7 +281,9 @@ def _mode(path: Path) -> int:
     return stat.S_IMODE(path.stat().st_mode)
 
 
-def check_report(path: Path, *, canonical: bool = True) -> List[str]:
+def check_report(
+    path: Path, *, canonical: bool = True, allow_legacy_activity_ids: bool = False
+) -> List[str]:
     """Everything about a report that a machine can actually judge."""
 
     problems: List[str] = []
@@ -281,11 +295,6 @@ def check_report(path: Path, *, canonical: bool = True) -> List[str]:
         meta, body = read_report(path)
     except ReportError as exc:
         return [str(exc)]
-
-    if not canonical:
-        if meta.get("day") != filename_day:
-            problems.append(f"day 与文件名不一致：{meta.get('day')} != {filename_day}")
-        return problems
 
     for key in REQUIRED_KEYS:
         if meta.get(key) in (None, ""):
@@ -320,9 +329,10 @@ def check_report(path: Path, *, canonical: bool = True) -> List[str]:
         activity_key_values = [value if isinstance(value, str) else repr(value) for value in activity_ids]
         if len(activity_key_values) != len(set(activity_key_values)):
             problems.append("activity_ids 不能重复")
+        accepted = (ACTIVITY_ID, LEGACY_ACTIVITY_ID) if allow_legacy_activity_ids else (ACTIVITY_ID,)
         for value in activity_ids:
-            if not isinstance(value, str) or not value.startswith("ACT-"):
-                problems.append(f"activity_ids 前缀非法：{value}")
+            if not isinstance(value, str) or not any(pattern.fullmatch(value) for pattern in accepted):
+                problems.append(f"activity_ids 格式非法：{value}")
     if isinstance(work_event_ids, list):
         event_key_values = [value if isinstance(value, str) else repr(value) for value in work_event_ids]
         if len(event_key_values) != len(set(event_key_values)):
@@ -357,6 +367,208 @@ def check_report(path: Path, *, canonical: bool = True) -> List[str]:
     if _mode(path) != FILE_MODE:
         problems.append(f"文件权限应为 {oct(FILE_MODE)}，实际 {oct(_mode(path))}")
     return problems
+
+
+def activity_id_migration_paths(reports_root: Path) -> List[Path]:
+    """Return every current or superseded Daily report in deterministic order."""
+
+    directory = daily_dir(reports_root)
+    if not directory.is_dir():
+        return []
+    return sorted(
+        path
+        for path in directory.iterdir()
+        if path.is_file() and (DAY_NAME.match(path.name) or SUPERSEDED_NAME.match(path.name))
+    )
+
+
+def plan_activity_id_migration(reports_root: Path) -> List[Tuple[Path, Dict[str, Any], str, int]]:
+    """Parse and collision-check the complete Reports migration before any write."""
+
+    planned: List[Tuple[Path, Dict[str, Any], str, int]] = []
+    compact_sources: Dict[str, str] = {}
+    for path in activity_id_migration_paths(reports_root):
+        canonical = bool(DAY_NAME.match(path.name))
+        problems = check_report(
+            path, canonical=canonical, allow_legacy_activity_ids=True
+        )
+        if problems:
+            raise ReportError(f"{path.name} 无法迁移：{'；'.join(problems)}")
+        meta, body = read_report(path)
+        values = meta.get("activity_ids", [])
+        converted = []
+        changed = 0
+        for value in values:
+            if ACTIVITY_ID.fullmatch(value):
+                compact = value
+                source = value
+            elif LEGACY_ACTIVITY_ID.fullmatch(value):
+                compact = migrate_legacy_activity_id(value)
+                source = value
+                changed += 1
+            else:
+                raise ReportError(f"{path.name} 含非法 Activity ID：{value}")
+            previous = compact_sources.get(compact)
+            if previous is not None and previous != source:
+                raise ReportError(
+                    f"Activity ID 碰撞：{previous} 与 {source} 都映射为 {compact}"
+                )
+            compact_sources[compact] = source
+            converted.append(compact)
+        if len(converted) != len(set(converted)):
+            raise ReportError(f"{path.name} 迁移后出现重复 Activity ID")
+        if changed:
+            migrated = dict(meta)
+            migrated["activity_ids"] = converted
+            planned.append((path, migrated, body, changed))
+    return planned
+
+
+def apply_activity_id_migration(
+    reports_root: Path, planned: List[Tuple[Path, Dict[str, Any], str, int]]
+) -> Optional[Path]:
+    """Stage, validate and atomically swap a complete Reports migration."""
+
+    if not planned:
+        return None
+    stamp = datetime.now(TIMEZONE).strftime("%Y%m%dT%H%M%S%f%z")
+    backup_root = (
+        reports_root.parent
+        / "backups"
+        / f"{ACTIVITY_ID_MIGRATION_BACKUP_PREFIX}{stamp}"
+    )
+    backup_root.parent.mkdir(parents=True, exist_ok=True)
+    os.chmod(backup_root.parent, DIR_MODE)
+    staging_parent = Path(
+        tempfile.mkdtemp(
+            prefix=ACTIVITY_ID_MIGRATION_STAGING_PREFIX,
+            dir=str(reports_root.parent),
+        )
+    )
+    staging_reports = staging_parent / reports_root.name
+    marker = reports_root.parent / ACTIVITY_ID_MIGRATION_MARKER
+    try:
+        shutil.copytree(reports_root, staging_reports, copy_function=shutil.copy2)
+        for path, meta, body, _changed in planned:
+            staged_path = staging_reports / path.relative_to(reports_root)
+            write_report(staged_path, meta, body)
+        findings = check_directory(staging_reports)
+        if findings:
+            details = "；".join(f"{path.name}: {problem}" for path, problem in findings)
+            raise ReportError(f"迁移 staging 校验失败：{details}")
+
+        backup_root.mkdir(mode=DIR_MODE)
+        _write_activity_id_migration_marker(
+            marker,
+            backup_name=backup_root.name,
+            staging_name=staging_parent.name,
+        )
+        try:
+            os.replace(reports_root, backup_root / reports_root.name)
+            os.replace(staging_reports, reports_root)
+        except Exception:
+            _recover_activity_id_migration_unlocked(reports_root)
+            raise
+        marker.unlink()
+        return backup_root
+    finally:
+        # A BaseException or process termination must leave the marker and
+        # staging tree intact for the next CLI invocation to recover.
+        if not marker.exists() and staging_parent.exists():
+            shutil.rmtree(staging_parent, ignore_errors=True)
+
+
+def _write_activity_id_migration_marker(
+    marker: Path, *, backup_name: str, staging_name: str
+) -> None:
+    """Persist enough state to resolve either side of the directory switch."""
+
+    payload = {
+        "operation": ACTIVITY_ID_MIGRATION_OPERATION,
+        "backup_name": backup_name,
+        "staging_name": staging_name,
+    }
+    descriptor, temporary_name = tempfile.mkstemp(
+        prefix=f".{marker.name}.", dir=str(marker.parent)
+    )
+    try:
+        with os.fdopen(descriptor, "w", encoding="utf-8") as handle:
+            json.dump(payload, handle, ensure_ascii=False, sort_keys=True)
+            handle.write("\n")
+            handle.flush()
+            os.fsync(handle.fileno())
+        os.chmod(temporary_name, FILE_MODE)
+        os.replace(temporary_name, marker)
+    finally:
+        if os.path.exists(temporary_name):
+            os.unlink(temporary_name)
+
+
+def _migration_marker_paths(reports_root: Path) -> Tuple[Path, Path, Path]:
+    marker = reports_root.parent / ACTIVITY_ID_MIGRATION_MARKER
+    try:
+        payload = json.loads(marker.read_text(encoding="utf-8"))
+    except (OSError, json.JSONDecodeError) as exc:
+        raise ReportError(f"无法读取 Reports 迁移事务标记：{exc}") from exc
+    if payload.get("operation") != ACTIVITY_ID_MIGRATION_OPERATION:
+        raise ReportError("Reports 迁移事务标记 operation 非法")
+    backup_name = payload.get("backup_name")
+    staging_name = payload.get("staging_name")
+    if (
+        not isinstance(backup_name, str)
+        or Path(backup_name).name != backup_name
+        or not backup_name.startswith(ACTIVITY_ID_MIGRATION_BACKUP_PREFIX)
+        or not isinstance(staging_name, str)
+        or Path(staging_name).name != staging_name
+        or not staging_name.startswith(ACTIVITY_ID_MIGRATION_STAGING_PREFIX)
+    ):
+        raise ReportError("Reports 迁移事务标记路径非法")
+    backup_root = reports_root.parent / "backups" / backup_name
+    staging_parent = reports_root.parent / staging_name
+    return marker, backup_root, staging_parent
+
+
+def _recover_activity_id_migration_unlocked(reports_root: Path) -> str:
+    """Resolve a persisted migration transaction while the Reports lock is held."""
+
+    marker, backup_root, staging_parent = _migration_marker_paths(reports_root)
+    backup_reports = backup_root / reports_root.name
+    staging_reports = staging_parent / reports_root.name
+    active_exists = reports_root.is_dir()
+    backup_exists = backup_reports.is_dir()
+    staging_exists = staging_reports.is_dir()
+
+    if active_exists and backup_exists and not staging_exists:
+        outcome = "applied"
+    elif not active_exists and backup_exists:
+        os.replace(backup_reports, reports_root)
+        outcome = "rolled_back"
+    elif active_exists and not backup_exists:
+        outcome = "rolled_back"
+    else:
+        raise ReportError(
+            "Reports 迁移事务状态无法自动恢复："
+            f"active={active_exists}, backup={backup_exists}, staging={staging_exists}"
+        )
+
+    if staging_parent.exists():
+        shutil.rmtree(staging_parent, ignore_errors=True)
+    if backup_root.exists() and not any(backup_root.iterdir()):
+        backup_root.rmdir()
+    marker.unlink()
+    return outcome
+
+
+def recover_activity_id_migration(reports_root: Path) -> Optional[str]:
+    """Recover an interrupted migration before any public Reports command runs."""
+
+    marker = reports_root.parent / ACTIVITY_ID_MIGRATION_MARKER
+    if not marker.exists():
+        return None
+    with locked(reports_root):
+        if not marker.exists():
+            return None
+        return _recover_activity_id_migration_unlocked(reports_root)
 
 
 def check_directory(reports_root: Path) -> List[Tuple[Path, str]]:

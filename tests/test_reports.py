@@ -5,14 +5,19 @@ import subprocess
 import sys
 import tempfile
 import unittest
+from unittest import mock
 from datetime import date
 from pathlib import Path
 
 from lifeos_reports import store
+from lifeos_sessions.activity_ids import activity_id, migrate_legacy_activity_id
 
 
 REPO_DIR = Path(__file__).resolve().parents[1]
 SCRIPT = REPO_DIR / "lifeos.py"
+ACTIVITY_1 = "ACT-AAAAAAAAAAAAAAAAAAAAAAAA"
+ACTIVITY_2 = "ACT-AAAAAAAAAAAAAAAAAAAAAAAB"
+LEGACY_ACTIVITY_1 = "ACT-" + "00" * 32
 
 
 class ReportsCLITestCase(unittest.TestCase):
@@ -210,9 +215,9 @@ class WriteTest(ReportsCLITestCase):
                 "--user-notes",
                 "1",
                 "--activity-id",
-                "ACT-1",
+                ACTIVITY_1,
                 "--activity-id",
-                "ACT-2",
+                ACTIVITY_2,
                 "--work-event-id",
                 "EVT-1",
                 "--json",
@@ -228,7 +233,7 @@ class WriteTest(ReportsCLITestCase):
         self.assertEqual("draft", meta["status"])
         self.assertEqual("2", meta["sessions_activities"])
         self.assertEqual("1", meta["work_events"])
-        self.assertEqual(["ACT-1", "ACT-2"], meta["activity_ids"])
+        self.assertEqual([ACTIVITY_1, ACTIVITY_2], meta["activity_ids"])
         self.assertEqual(["EVT-1"], meta["work_event_ids"])
         self.assertIn("今天推进了两个项目", body)
         self.assertEqual(0o600, self.mode(self.report()))
@@ -342,9 +347,9 @@ class WriteTest(ReportsCLITestCase):
             "--body-file",
             str(self.body_file()),
             "--activity-id",
-            "ACT-1",
+            ACTIVITY_1,
             "--activity-id",
-            "ACT-1",
+            ACTIVITY_1,
             check=False,
         )
         self.assertEqual(1, duplicate.returncode)
@@ -476,13 +481,13 @@ class FrontmatterTest(unittest.TestCase):
 
     def test_roundtrip_keeps_lists_and_empty_scalars(self):
         meta = store.skeleton(date(2026, 8, 9), "2026-08-10T02:00:00+08:00")
-        meta["activity_ids"] = ["ACT-1", "ACT-2"]
+        meta["activity_ids"] = [ACTIVITY_1, ACTIVITY_2]
         meta["sessions_activities"] = 2
         text = store.render_report(meta, "## 概览\n\n正文。\n")
 
         parsed, body = store.parse_frontmatter(text)
 
-        self.assertEqual(["ACT-1", "ACT-2"], parsed["activity_ids"])
+        self.assertEqual([ACTIVITY_1, ACTIVITY_2], parsed["activity_ids"])
         self.assertEqual([], parsed["work_event_ids"])
         self.assertIsNone(parsed["confirmed_at"])
         self.assertEqual("2", parsed["sessions_activities"])
@@ -512,7 +517,7 @@ class FrontmatterTest(unittest.TestCase):
                 sessions_partial=1,
                 sessions_interrupted=1,
                 sessions_omitted=3,
-                activity_ids=["ACT-1", "ACT-2"],
+                activity_ids=[ACTIVITY_1, ACTIVITY_2],
                 work_events=1,
                 work_event_ids=["EVT-1"],
             )
@@ -541,17 +546,194 @@ class FrontmatterTest(unittest.TestCase):
             meta = store.skeleton(date(2026, 8, 9), "2026-08-10T02:00:00+08:00")
             meta.update(
                 sessions_activities=1,
-                activity_ids=["ACT-1", "ACT-1", "BAD-2"],
+                activity_ids=[ACTIVITY_1, ACTIVITY_1, "BAD-2"],
                 work_events=1,
                 work_event_ids=["EVT-1", "NOPE-2"],
             )
             store.write_report(path, meta, "## 概览\n\n正文。\n")
             problems = " ".join(store.check_report(path))
             self.assertIn("activity_ids 不能重复", problems)
-            self.assertIn("activity_ids 前缀非法", problems)
+            self.assertIn("activity_ids 格式非法", problems)
             self.assertIn("work_event_ids 前缀非法", problems)
             self.assertIn("sessions_activities 必须等于唯一 activity_ids 数量", problems)
             self.assertIn("work_events 必须等于唯一 work_event_ids 数量", problems)
+
+
+class ActivityIdMigrationTest(ReportsCLITestCase):
+    def prepare_legacy_reports(self):
+        self.run_cli("begin", "--day", "2026-08-09")
+        path = self.report()
+        meta, _body = store.read_report(path)
+        meta.update(
+            sessions_activities=1,
+            activity_ids=[LEGACY_ACTIVITY_1],
+            status="confirmed",
+            confirmed_at="2026-08-10T02:05:00+08:00",
+        )
+        body = "## 概览\n\n历史正文保持不变。\n"
+        store.write_report(path, meta, body)
+        snapshot = self.daily_dir / "2026-08-09.superseded-20260810T020600+0800.md"
+        store.write_report(snapshot, meta, body)
+        return path, snapshot
+
+    def test_dry_run_reads_current_and_superseded_without_writing(self):
+        path, snapshot = self.prepare_legacy_reports()
+        before = {item: item.read_bytes() for item in (path, snapshot)}
+
+        payload = json.loads(self.run_cli("migrate-activity-ids", "--json").stdout)
+
+        self.assertEqual("dry-run", payload["mode"])
+        self.assertEqual(2, payload["checked_files"])
+        self.assertEqual(2, payload["changed_files"])
+        self.assertEqual(2, payload["changed_ids"])
+        self.assertIsNone(payload["backup"])
+        self.assertEqual(before, {item: item.read_bytes() for item in (path, snapshot)})
+
+    def test_apply_only_changes_ids_and_is_idempotent(self):
+        path, snapshot = self.prepare_legacy_reports()
+        before = {item: store.read_report(item) for item in (path, snapshot)}
+
+        payload = json.loads(
+            self.run_cli("migrate-activity-ids", "--apply", "--json").stdout
+        )
+
+        compact = migrate_legacy_activity_id(LEGACY_ACTIVITY_1)
+        self.assertEqual(2, payload["changed_files"])
+        self.assertEqual(2, payload["changed_ids"])
+        self.assertTrue(Path(payload["backup"]).is_dir())
+        for item in (path, snapshot):
+            meta, body = store.read_report(item)
+            old_meta, old_body = before[item]
+            self.assertEqual([compact], meta["activity_ids"])
+            old_meta["activity_ids"] = [compact]
+            self.assertEqual(old_meta, meta)
+            self.assertEqual(old_body, body)
+
+        again = json.loads(
+            self.run_cli("migrate-activity-ids", "--apply", "--json").stdout
+        )
+        self.assertEqual(0, again["changed_files"])
+        self.assertEqual(0, again["changed_ids"])
+        self.assertIsNone(again["backup"])
+        self.assertEqual(0, self.run_cli("validate", check=False).returncode)
+
+    def test_collision_fails_before_any_file_changes(self):
+        path, _snapshot = self.prepare_legacy_reports()
+        meta, body = store.read_report(path)
+        collision = "ACT-" + "00" * 15 + "11" * 17
+        meta.update(sessions_activities=2, activity_ids=[LEGACY_ACTIVITY_1, collision])
+        store.write_report(path, meta, body)
+        before = path.read_bytes()
+
+        result = self.run_cli("migrate-activity-ids", "--apply", check=False)
+
+        self.assertEqual(1, result.returncode)
+        self.assertIn("碰撞", result.stderr)
+        self.assertEqual(before, path.read_bytes())
+
+    def test_interruption_after_old_tree_moves_is_recovered_before_validate(self):
+        path, _snapshot = self.prepare_legacy_reports()
+        planned = store.plan_activity_id_migration(self.reports_root)
+        original_replace = os.replace
+
+        def interrupt_after_old_tree_moves(source, target):
+            result = original_replace(source, target)
+            if Path(source) == self.reports_root:
+                raise KeyboardInterrupt("synthetic process termination")
+            return result
+
+        with mock.patch(
+            "lifeos_reports.store.os.replace", side_effect=interrupt_after_old_tree_moves
+        ):
+            with self.assertRaises(KeyboardInterrupt):
+                store.apply_activity_id_migration(self.reports_root, planned)
+
+        self.assertFalse(path.exists())
+        marker = self.data_dir / store.ACTIVITY_ID_MIGRATION_MARKER
+        self.assertTrue(marker.is_file())
+        validated = self.run_cli("validate", check=False)
+        self.assertEqual(1, validated.returncode)
+        self.assertIn("activity_ids 格式非法", validated.stderr)
+        self.assertTrue(path.exists())
+        self.assertFalse(marker.exists())
+
+    def test_interruption_after_new_tree_moves_keeps_new_tree_on_recovery(self):
+        path, _snapshot = self.prepare_legacy_reports()
+        planned = store.plan_activity_id_migration(self.reports_root)
+        original_replace = os.replace
+
+        def interrupt_after_new_tree_moves(source, target):
+            result = original_replace(source, target)
+            source_path = Path(source)
+            if (
+                source_path.name == self.reports_root.name
+                and source_path.parent.name.startswith(
+                    store.ACTIVITY_ID_MIGRATION_STAGING_PREFIX
+                )
+            ):
+                raise KeyboardInterrupt("synthetic process termination")
+            return result
+
+        with mock.patch(
+            "lifeos_reports.store.os.replace", side_effect=interrupt_after_new_tree_moves
+        ):
+            with self.assertRaises(KeyboardInterrupt):
+                store.apply_activity_id_migration(self.reports_root, planned)
+
+        marker = self.data_dir / store.ACTIVITY_ID_MIGRATION_MARKER
+        self.assertTrue(path.exists())
+        self.assertTrue(marker.is_file())
+        validated = self.run_cli("validate", check=False)
+        self.assertEqual(0, validated.returncode)
+        self.assertFalse(marker.exists())
+        meta, _body = store.read_report(path)
+        self.assertEqual(
+            [migrate_legacy_activity_id(LEGACY_ACTIVITY_1)], meta["activity_ids"]
+        )
+
+    def test_superseded_invalid_shape_body_or_permissions_blocks_migration(self):
+        _path, snapshot = self.prepare_legacy_reports()
+
+        meta, _body = store.read_report(snapshot)
+        meta["activity_ids"] = ["ACT-invalid"]
+        store.write_report(snapshot, meta, "## 概览\n\n正文。\n")
+        with self.assertRaisesRegex(store.ReportError, "activity_ids 格式非法"):
+            store.plan_activity_id_migration(self.reports_root)
+
+        meta["activity_ids"] = [LEGACY_ACTIVITY_1]
+        store.write_report(snapshot, meta, "")
+        with self.assertRaisesRegex(store.ReportError, "正文为空"):
+            store.plan_activity_id_migration(self.reports_root)
+
+        store.write_report(snapshot, meta, "## 概览\n\n正文。\n")
+        os.chmod(snapshot, 0o644)
+        with self.assertRaisesRegex(store.ReportError, "文件权限"):
+            store.plan_activity_id_migration(self.reports_root)
+
+
+class ActivityIdContractTest(unittest.TestCase):
+    def test_activity_id_is_stable_compact_base32(self):
+        first = activity_id("codex", "conversation-1", "slice-1", "slice-2")
+        second = activity_id("codex", "conversation-1", "slice-1", "slice-2")
+
+        self.assertEqual(first, second)
+        self.assertRegex(first, r"^ACT-[A-Z2-7]{24}$")
+
+    def test_legacy_conversion_uses_the_same_digest_prefix(self):
+        import hashlib
+
+        parts = ("codex", "conversation-1", "slice-1")
+        digest = hashlib.sha256("\0".join(parts).encode("utf-8")).hexdigest()
+
+        self.assertEqual(activity_id(*parts), migrate_legacy_activity_id(f"ACT-{digest}"))
+
+    def test_real_eighty_bit_collision_remains_distinct_at_120_bits(self):
+        first = "ACT-a750d0ea924464af5f2446d022c8d39b41cc17f0c5c7c63b63897c275275fbe0"
+        second = "ACT-a750d0ea924464af5f2446d022c8c39b41cc17f0c5c7c63b63897c275275fbe0"
+
+        self.assertNotEqual(
+            migrate_legacy_activity_id(first), migrate_legacy_activity_id(second)
+        )
 
 
 if __name__ == "__main__":

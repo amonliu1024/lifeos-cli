@@ -4,9 +4,17 @@
 
 ## Unreleased
 
+## v1.1.1
+
+> 发布日期：2026-09-02
+
 ### 新增
 
 - Sessions 新增 Pi Coding Agent 只读来源，可从本机树形 JSONL 会话采集请求、最终答复与有界执行证据；新安装默认启用，既有私有配置保持显式来源选择不变。
+
+### 变更
+
+- Sessions Activity 改用更短的 120-bit Base32 ID；旧长 ID 不再兼容，已有日报可通过 `lifeos reports migrate-activity-ids` 在不重新采集内容的情况下预演并一次性迁移。
 
 ## v1.1.0
 
