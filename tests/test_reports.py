@@ -80,6 +80,12 @@ class ReportsHelpTest(ReportsCLITestCase):
         self.assertIn("不修改", validate_help)
         self.assertIn("不确认", validate_help)
 
+        periodic_help = self.run_cli("periodic", "--help").stdout
+        for phrase in ("周、月、季度、半年或年度", "不重新采集", "YYYY-Www"):
+            self.assertIn(phrase, periodic_help)
+        self.assertNotIn("import", periodic_help)
+        self.assertNotIn("read", periodic_help)
+
 
 class BeginTest(ReportsCLITestCase):
     def test_begin_creates_private_skeleton_for_the_natural_day(self):
@@ -734,6 +740,195 @@ class ActivityIdContractTest(unittest.TestCase):
         self.assertNotEqual(
             migrate_legacy_activity_id(first), migrate_legacy_activity_id(second)
         )
+
+
+class PeriodicReportsTest(ReportsCLITestCase):
+    def periodic_report(self, period="2026-W32"):
+        return self.reports_root / "periodic" / f"{period}.md"
+
+    def prepare_daily(self, day, *, confirmed=True, body=None):
+        self.run_cli("begin", "--day", day)
+        path = self.report(day)
+        meta, _existing = store.read_report(path)
+        store.write_report(
+            path,
+            meta,
+            body or f"# {day}\n\n当天形成了可复用的工作结论。\n",
+        )
+        if confirmed:
+            self.run_cli("confirm", "--day", day)
+        return path
+
+    def write_periodic(self, period="2026-W32"):
+        body = self.data_dir / "periodic-body.md"
+        body.write_text("# 周期总结\n\n这一周期形成了一条跨日变化主线。\n", encoding="utf-8")
+        return self.run_cli(
+            "periodic",
+            "write",
+            "--period",
+            period,
+            "--body-file",
+            str(body),
+        )
+
+    def test_period_windows_cover_supported_calendar_kinds(self):
+        expected = {
+            "2026-W01": ("week", "2025-12-29", "2026-01-05"),
+            "2026-02": ("month", "2026-02-01", "2026-03-01"),
+            "2026-Q3": ("quarter", "2026-07-01", "2026-10-01"),
+            "2026-H2": ("half", "2026-07-01", "2027-01-01"),
+            "2026": ("year", "2026-01-01", "2027-01-01"),
+        }
+        for period, result in expected.items():
+            kind, start, end = store.period_window(period)
+            self.assertEqual(result, (kind, start.isoformat(), end.isoformat()))
+        for invalid in ("2026-Q5", "0000-Q1", "0000-H1", "9999-W52"):
+            with self.assertRaises(store.ReportError):
+                store.period_window(invalid)
+
+    def test_sources_only_returns_confirmed_daily_bodies_and_reports_gaps(self):
+        self.prepare_daily("2026-08-03", body="# 周一\n\n确认正文。\n")
+        self.prepare_daily("2026-08-04", confirmed=False)
+
+        payload = json.loads(
+            self.run_cli(
+                "periodic", "sources", "--period", "2026-W32", "--json"
+            ).stdout
+        )
+
+        self.assertEqual(1, payload["source_total"])
+        self.assertIsNone(payload["next_offset"])
+        self.assertEqual(["2026-08-03"], payload["coverage"]["source_days"])
+        self.assertEqual(["2026-08-04"], payload["coverage"]["draft_days"])
+        self.assertEqual(
+            ["2026-08-05", "2026-08-06", "2026-08-07", "2026-08-08", "2026-08-09"],
+            payload["coverage"]["missing_days"],
+        )
+        self.assertEqual("# 周一\n\n确认正文。\n", payload["reports"][0]["body"])
+
+    def test_sources_paginate_long_period_without_repeating_coverage(self):
+        for day in ("2026-08-03", "2026-08-04", "2026-08-05"):
+            self.prepare_daily(day)
+
+        first = json.loads(
+            self.run_cli(
+                "periodic",
+                "sources",
+                "--period",
+                "2026-W32",
+                "--limit",
+                "2",
+                "--json",
+            ).stdout
+        )
+        second = json.loads(
+            self.run_cli(
+                "periodic",
+                "sources",
+                "--period",
+                "2026-W32",
+                "--offset",
+                str(first["next_offset"]),
+                "--limit",
+                "2",
+                "--json",
+            ).stdout
+        )
+
+        self.assertEqual(["2026-08-03", "2026-08-04"], [row["day"] for row in first["reports"]])
+        self.assertEqual(2, first["next_offset"])
+        self.assertIn("coverage", first)
+        self.assertEqual(["2026-08-05"], [row["day"] for row in second["reports"]])
+        self.assertIsNone(second["next_offset"])
+        self.assertNotIn("coverage", second)
+
+    def test_begin_write_confirm_and_list_preserve_source_snapshot(self):
+        self.prepare_daily("2026-08-03")
+        self.prepare_daily("2026-08-04")
+        begun = json.loads(
+            self.run_cli(
+                "periodic", "begin", "--period", "2026-W32", "--json"
+            ).stdout
+        )
+        self.assertEqual("new", begun["state"])
+        self.assertEqual(["2026-08-03", "2026-08-04"], begun["source_days"])
+        self.assertEqual(0o700, self.mode(self.reports_root / "periodic"))
+        self.assertEqual(0o600, self.mode(self.periodic_report()))
+
+        self.write_periodic()
+        confirmed = json.loads(
+            self.run_cli(
+                "periodic", "confirm", "--period", "2026-W32", "--json"
+            ).stdout
+        )
+        self.assertTrue(confirmed["changed"])
+        meta, body = store.read_report(self.periodic_report())
+        self.assertEqual("confirmed", meta["status"])
+        self.assertEqual("week", meta["period_type"])
+        self.assertIn("跨日变化主线", body)
+
+        rows = json.loads(self.run_cli("periodic", "list", "--json").stdout)
+        self.assertEqual(1, rows["total"])
+        self.assertEqual(2, rows["reports"][0]["source_days"])
+        self.assertEqual(0, self.run_cli("validate", check=False).returncode)
+
+    def test_confirm_rejects_an_unwritten_skeleton(self):
+        self.prepare_daily("2026-08-03")
+        self.run_cli("periodic", "begin", "--period", "2026-W32")
+
+        result = self.run_cli(
+            "periodic", "confirm", "--period", "2026-W32", check=False
+        )
+
+        self.assertEqual(1, result.returncode)
+        self.assertIn("正文为空", result.stderr)
+
+    def test_begin_requires_at_least_one_confirmed_daily(self):
+        self.prepare_daily("2026-08-03", confirmed=False)
+        result = self.run_cli(
+            "periodic", "begin", "--period", "2026-W32", check=False
+        )
+        self.assertEqual(1, result.returncode)
+        self.assertIn("没有已确认日报", result.stderr)
+        self.assertFalse(self.periodic_report().exists())
+
+    def test_confirm_rejects_daily_inventory_drift(self):
+        self.prepare_daily("2026-08-03")
+        self.run_cli("periodic", "begin", "--period", "2026-W32")
+        self.write_periodic()
+        self.prepare_daily("2026-08-04")
+
+        result = self.run_cli(
+            "periodic", "confirm", "--period", "2026-W32", check=False
+        )
+
+        self.assertEqual(1, result.returncode)
+        self.assertIn("已变化", result.stderr)
+        meta, _body = store.read_report(self.periodic_report())
+        self.assertEqual("draft", meta["status"])
+
+    def test_redo_preserves_confirmed_periodic_report(self):
+        self.prepare_daily("2026-08-03")
+        self.run_cli("periodic", "begin", "--period", "2026-W32")
+        self.write_periodic()
+        self.run_cli("periodic", "confirm", "--period", "2026-W32")
+        before = self.periodic_report().read_bytes()
+
+        payload = json.loads(
+            self.run_cli(
+                "periodic",
+                "begin",
+                "--period",
+                "2026-W32",
+                "--redo",
+                "--json",
+            ).stdout
+        )
+
+        snapshot = Path(payload["superseded"])
+        self.assertEqual(before, snapshot.read_bytes())
+        meta, _body = store.read_report(self.periodic_report())
+        self.assertEqual("draft", meta["status"])
 
 
 if __name__ == "__main__":

@@ -1,4 +1,4 @@
-"""``lifeos reports`` -- structure and state for daily reports.
+"""``lifeos reports`` -- structure and state for daily and periodic reports.
 
 The split with the ``lifeos`` skill's Daily branch is deliberate: the skill authors the
 prose, while this domain decides where a report lives, what it is called, who
@@ -32,6 +32,14 @@ def _validate_day(value: str) -> date:
         raise argparse.ArgumentTypeError("日期必须使用 YYYY-MM-DD")
 
 
+def _validate_period(value: str) -> str:
+    try:
+        store.period_window(value)
+    except ReportError as exc:
+        raise argparse.ArgumentTypeError(str(exc))
+    return value
+
+
 def _validate_nonnegative(value: str) -> int:
     try:
         parsed = int(value)
@@ -42,12 +50,35 @@ def _validate_nonnegative(value: str) -> int:
     return parsed
 
 
+def _validate_page_size(value: str) -> int:
+    parsed = _validate_nonnegative(value)
+    if not 1 <= parsed <= 31:
+        raise argparse.ArgumentTypeError("必须是 1 到 31 之间的整数")
+    return parsed
+
+
 def _emit(args: Any, payload: Dict[str, Any], lines: List[str]) -> None:
     if args.json:
         print(json.dumps(payload, ensure_ascii=False, indent=2))
         return
     for line in lines:
         print(line)
+
+
+def _read_body_file(body_file: Path) -> str:
+    try:
+        body = (
+            sys.stdin.read()
+            if str(body_file) == "-"
+            else body_file.read_text(encoding="utf-8")
+        )
+    except OSError as exc:
+        _fail(f"无法读取正文：{body_file}（{exc}）")
+    if not body.strip():
+        _fail("正文不能为空")
+    if body.lstrip().startswith("---"):
+        _fail("正文不能包含 frontmatter；结构字段由 CLI 管理")
+    return body
 
 
 def _with_migration_recovery(handler: Any) -> Any:
@@ -67,31 +98,21 @@ def command_begin(args: Any) -> None:
     reports_root: Path = args.reports_root
     day: date = args.day
     path = store.report_path(reports_root, day)
-    state = "new"
-    superseded = None
-
     with store.locked(reports_root):
-        if path.exists():
-            try:
-                meta, _body = store.read_report(path)
-            except ReportError as exc:
-                _fail(f"已存在的日报无法解析，请先修复或移走：{path}（{exc}）")
-            status = meta.get("status")
-            if status == "confirmed" and not args.redo:
-                _fail(
-                    f"{day.isoformat()} 的日报已确认，不会自动覆盖。"
-                    f"确实要重做时加 --redo，旧文件会另存为 superseded 快照。"
-                )
-            state = "redo" if status == "confirmed" else "overwrite"
-
-        store.ensure_daily_dir(reports_root)
-        if state == "redo":
-            target = path.parent / store.superseded_name(day)
-            path.rename(target)
-            superseded = str(target)
-
         meta = store.skeleton(day, store.now_text())
-        store.write_report(path, meta, store.SKELETON_BODY)
+        try:
+            state, superseded_path = store.prepare_report_draft(
+                path,
+                meta,
+                store.SKELETON_BODY,
+                redo=args.redo,
+                superseded_filename=store.superseded_name(day),
+                label=f"{day.isoformat()} 的日报",
+                ensure_directory=lambda: store.ensure_daily_dir(reports_root),
+            )
+        except ReportError as exc:
+            _fail(str(exc))
+        superseded = str(superseded_path) if superseded_path else None
 
     window_from, window_to = store.day_window(day)
     label = {"new": "新建草稿", "overwrite": "覆盖既有草稿", "redo": "重做已确认日报"}[state]
@@ -117,34 +138,16 @@ def command_confirm(args: Any) -> None:
     day: date = args.day
     path = store.report_path(reports_root, day)
     with store.locked(reports_root):
-        if not path.exists():
-            _fail(f"{day.isoformat()} 还没有日报：{path}")
-
-        problems = store.check_report(path)
-        if problems:
-            for problem in problems:
-                print(f"! {problem}", file=sys.stderr)
-            _fail(f"日报未通过校验，不予确认：{path}")
-
-        meta, body = store.read_report(path)
-        if meta.get("status") == "confirmed":
-            _emit(
-                args,
-                {
-                    "day": day.isoformat(),
-                    "path": str(path),
-                    "status": "confirmed",
-                    "confirmed_at": meta.get("confirmed_at"),
-                    "changed": False,
-                },
-                [f"{day.isoformat()} 的日报已是 confirmed，未写入。"],
+        try:
+            meta, changed = store.confirm_report_draft(
+                path,
+                validate=store.check_report,
+                label=f"{day.isoformat()} 的日报",
+                missing_message=f"{day.isoformat()} 还没有日报：{path}",
             )
-            return
-
-        confirmed_at = store.now_text()
-        meta["status"] = "confirmed"
-        meta["confirmed_at"] = confirmed_at
-        store.write_report(path, meta, body)
+        except ReportError as exc:
+            _fail(str(exc))
+    confirmed_at = meta.get("confirmed_at")
     _emit(
         args,
         {
@@ -152,9 +155,13 @@ def command_confirm(args: Any) -> None:
             "path": str(path),
             "status": "confirmed",
             "confirmed_at": confirmed_at,
-            "changed": True,
+            "changed": changed,
         },
-        [f"{day.isoformat()} 的日报已确认 · {confirmed_at}"],
+        [
+            f"{day.isoformat()} 的日报已确认 · {confirmed_at}"
+            if changed
+            else f"{day.isoformat()} 的日报已是 confirmed，未写入。"
+        ],
     )
 
 
@@ -162,18 +169,7 @@ def command_write(args: Any) -> None:
     reports_root: Path = args.reports_root
     day: date = args.day
     path = store.report_path(reports_root, day)
-    try:
-        body = (
-            sys.stdin.read()
-            if str(args.body_file) == "-"
-            else args.body_file.read_text(encoding="utf-8")
-        )
-    except OSError as exc:
-        _fail(f"无法读取正文：{args.body_file}（{exc}）")
-    if not body.strip():
-        _fail("正文不能为空")
-    if body.lstrip().startswith("---"):
-        _fail("正文不能包含 frontmatter；结构字段由 CLI 管理")
+    body = _read_body_file(args.body_file)
     for name, values, prefix in (
         ("--activity-id", args.activity_ids, "ACT-"),
         ("--work-event-id", args.work_event_ids, "EVT-"),
@@ -202,31 +198,30 @@ def command_write(args: Any) -> None:
         _fail(f"--git-scan-id 格式非法：{args.git_scan_id}")
 
     with store.locked(reports_root):
-        if not path.exists():
-            _fail(f"{day.isoformat()} 还没有日报；请先运行 reports begin")
-        problems = store.check_report(path)
-        if problems:
-            for problem in problems:
-                print(f"! {problem}", file=sys.stderr)
-            _fail(f"既有日报未通过校验，不予写入：{path}")
-        meta, _existing = store.read_report(path)
-        if meta.get("status") != "draft":
-            _fail(f"{day.isoformat()} 的日报已确认；确实要重做时先运行 reports begin --redo")
-        meta.update(
-            sessions_activities=len(args.activity_ids),
-            sessions_partial=args.sessions_partial,
-            sessions_interrupted=args.sessions_interrupted,
-            sessions_omitted=args.sessions_omitted,
-            work_events=len(args.work_event_ids),
-            user_notes=args.user_notes,
-            unresolved=args.unresolved,
-            git_scan_id=args.git_scan_id,
-            git_commits=len(args.git_commit_ids),
-            activity_ids=args.activity_ids,
-            work_event_ids=args.work_event_ids,
-            git_commit_ids=args.git_commit_ids,
-        )
-        store.write_report(path, meta, body)
+        try:
+            store.write_report_draft(
+                path,
+                body,
+                validate=store.check_report,
+                begin_hint="reports begin",
+                label=f"{day.isoformat()} 的日报",
+                meta_updates={
+                    "sessions_activities": len(args.activity_ids),
+                    "sessions_partial": args.sessions_partial,
+                    "sessions_interrupted": args.sessions_interrupted,
+                    "sessions_omitted": args.sessions_omitted,
+                    "work_events": len(args.work_event_ids),
+                    "user_notes": args.user_notes,
+                    "unresolved": args.unresolved,
+                    "git_scan_id": args.git_scan_id,
+                    "git_commits": len(args.git_commit_ids),
+                    "activity_ids": args.activity_ids,
+                    "work_event_ids": args.work_event_ids,
+                    "git_commit_ids": args.git_commit_ids,
+                },
+            )
+        except ReportError as exc:
+            _fail(str(exc))
 
     _emit(
         args,
@@ -262,6 +257,7 @@ def command_path(args: Any) -> None:
         "window": {"from": window_from.isoformat(), "to": window_to.isoformat()},
         "exists": path.exists(),
         "status": None,
+        "origin": None,
         "generated_at": None,
         "confirmed_at": None,
         "superseded": [str(item) for item in store.superseded_paths(reports_root, day)],
@@ -325,13 +321,204 @@ def command_list(args: Any) -> None:
     _emit(args, payload, lines)
 
 
+def command_periodic_sources(args: Any) -> None:
+    try:
+        payload = store.periodic_sources(
+            args.reports_root, args.period, offset=args.offset, limit=args.limit
+        )
+    except ReportError as exc:
+        _fail(str(exc))
+    lines = [
+        f"{payload['period']} · confirmed 日报 {payload['source_total']} 份"
+        f" · 本页 {len(payload['reports'])} 份 · offset {payload['offset']}"
+    ]
+    if payload.get("coverage"):
+        lines.append(
+            f"缺失 {len(payload['coverage']['missing_days'])} 天"
+            f" · draft {len(payload['coverage']['draft_days'])} 天"
+        )
+    for report in payload["reports"]:
+        lines.extend((f"\n--- {report['day']} ---", report["body"].rstrip()))
+    _emit(args, payload, lines)
+
+
+def command_periodic_begin(args: Any) -> None:
+    reports_root: Path = args.reports_root
+    period: str = args.period
+    path = store.periodic_report_path(reports_root, period)
+    with store.locked(reports_root):
+        try:
+            meta = store.periodic_skeleton(reports_root, period, store.now_text())
+        except ReportError as exc:
+            _fail(str(exc))
+        if not meta["source_days"]:
+            _fail(f"{period} 没有已确认日报，无法建立周期报草稿")
+        try:
+            state, superseded_path = store.prepare_report_draft(
+                path,
+                meta,
+                store.PERIODIC_SKELETON_BODY,
+                redo=args.redo,
+                superseded_filename=store.periodic_superseded_name(period),
+                label=f"{period} 的周期报",
+                ensure_directory=lambda: store.ensure_periodic_dir(reports_root),
+            )
+        except ReportError as exc:
+            _fail(str(exc))
+        superseded = str(superseded_path) if superseded_path else None
+
+    _kind, start, end = store.period_window(period)
+    label = {"new": "新建草稿", "overwrite": "覆盖既有草稿", "redo": "重做已确认周期报"}[state]
+    _emit(
+        args,
+        {
+            "period": period,
+            "period_type": meta["period_type"],
+            "path": str(path),
+            "state": state,
+            "window": {
+                "from": store.day_window(start)[0].isoformat(),
+                "to": store.day_window(end)[0].isoformat(),
+            },
+            "source_days": meta["source_days"],
+            "missing_days": meta["missing_days"],
+            "draft_days": meta["draft_days"],
+            "superseded": superseded,
+        },
+        [
+            str(path),
+            f"{label} · 来源 {len(meta['source_days'])} 份 confirmed 日报"
+            f" · 缺失 {len(meta['missing_days'])} 天 · draft {len(meta['draft_days'])} 天",
+        ],
+    )
+
+
+def command_periodic_write(args: Any) -> None:
+    path = store.periodic_report_path(args.reports_root, args.period)
+    body = _read_body_file(args.body_file)
+
+    with store.locked(args.reports_root):
+        try:
+            store.write_report_draft(
+                path,
+                body,
+                validate=lambda item: store.check_periodic_report(
+                    item, allow_skeleton=True
+                ),
+                begin_hint="reports periodic begin",
+                label=f"{args.period} 的周期报",
+            )
+        except ReportError as exc:
+            _fail(str(exc))
+    _emit(
+        args,
+        {"period": args.period, "path": str(path), "status": "draft"},
+        [f"{args.period} 的周期报草稿已写入 · 状态仍为 draft"],
+    )
+
+
+def command_periodic_confirm(args: Any) -> None:
+    path = store.periodic_report_path(args.reports_root, args.period)
+    with store.locked(args.reports_root):
+        try:
+            meta, changed = store.confirm_report_draft(
+                path,
+                validate=store.check_periodic_report,
+                label=f"{args.period} 的周期报",
+                missing_message=f"{args.period} 还没有周期报：{path}",
+                validate_current=lambda item: store.check_periodic_sources_current(
+                    args.reports_root, item
+                ),
+            )
+        except ReportError as exc:
+            _fail(str(exc))
+    confirmed_at = meta.get("confirmed_at")
+    _emit(
+        args,
+        {
+            "period": args.period,
+            "path": str(path),
+            "status": "confirmed",
+            "confirmed_at": confirmed_at,
+            "changed": changed,
+        },
+        [
+            f"{args.period} 的周期报已确认 · {confirmed_at}"
+            if changed
+            else f"{args.period} 的周期报已是 confirmed，未写入。"
+        ],
+    )
+
+
+def command_periodic_path(args: Any) -> None:
+    path = store.periodic_report_path(args.reports_root, args.period)
+    kind, start, end = store.period_window(args.period)
+    payload: Dict[str, Any] = {
+        "period": args.period,
+        "period_type": kind,
+        "path": str(path),
+        "window": {
+            "from": store.day_window(start)[0].isoformat(),
+            "to": store.day_window(end)[0].isoformat(),
+        },
+        "exists": path.exists(),
+        "status": None,
+        "generated_at": None,
+        "confirmed_at": None,
+        "superseded": [
+            str(item)
+            for item in store.periodic_superseded_paths(args.reports_root, args.period)
+        ],
+    }
+    lines = [str(path)]
+    if path.exists():
+        try:
+            meta, _body = store.read_report(path)
+        except ReportError as exc:
+            lines.append(f"存在但无法解析：{exc}")
+        else:
+            for key in ("status", "generated_at", "confirmed_at"):
+                payload[key] = meta.get(key)
+            lines.append(
+                f"{meta.get('status')} · 来源 {len(meta.get('source_days', []))} 份 confirmed 日报"
+            )
+    else:
+        lines.append("尚未生成")
+    if payload["superseded"]:
+        lines.append(f"另有 {len(payload['superseded'])} 份 superseded 快照")
+    _emit(args, payload, lines)
+
+
+def command_periodic_list(args: Any) -> None:
+    rows = store.list_periodic_reports(args.reports_root)
+    if args.status:
+        rows = [row for row in rows if row.get("status") == args.status]
+    payload = {"total": len(rows), "reports": rows}
+    lines = []
+    for row in rows:
+        if row.get("error"):
+            lines.append(f"{row['period']} · 无法解析：{row['error']}")
+            continue
+        lines.append(
+            f"{row['period']} · {row.get('status')} · 来源 {row.get('source_days')} 份"
+            f" · 缺失 {len(row.get('missing_days', []))} 天"
+            f" · draft {len(row.get('draft_days', []))} 天"
+        )
+    if not rows:
+        lines.append("没有符合条件的周期报。")
+    _emit(args, payload, lines)
+
+
 def command_validate(args: Any) -> None:
     reports_root: Path = args.reports_root
     findings = store.check_directory(reports_root)
-    rows = store.list_reports(reports_root)
+    daily_rows = store.list_reports(reports_root)
+    periodic_rows = store.list_periodic_reports(reports_root)
     payload = {
         "root": str(reports_root),
-        "checked": len(rows),
+        "checked": len(daily_rows) + len(periodic_rows),
+        "daily_checked": len(daily_rows),
+        "periodic_checked": len(periodic_rows),
         "problems": [{"path": str(path), "problem": problem} for path, problem in findings],
         "ok": not findings,
     }
@@ -341,9 +528,16 @@ def command_validate(args: Any) -> None:
         for path, problem in findings:
             print(f"! {Path(path).name}：{problem}", file=sys.stderr)
         if findings:
-            print(f"{len(findings)} 项问题，检查了 {len(rows)} 份日报。", file=sys.stderr)
+            print(
+                f"{len(findings)} 项问题，检查了 {len(daily_rows)} 份日报"
+                f"和 {len(periodic_rows)} 份周期报。",
+                file=sys.stderr,
+            )
         else:
-            print(f"日报校验通过，共 {len(rows)} 份。")
+            print(
+                f"Reports 校验通过，共 {len(daily_rows)} 份日报"
+                f"和 {len(periodic_rows)} 份周期报。"
+            )
     if findings:
         raise SystemExit(1)
 
@@ -385,15 +579,16 @@ def command_migrate_activity_ids(args: Any) -> None:
 def register_reports_parser(domains: Any, data_dir: Path) -> None:
     reports = domains.add_parser(
         "reports",
-        help="日报结构与状态（正文由 Skill 写入）",
+        help="日报与周期报的结构和状态（正文由 Skill 写入）",
         description=(
-            "管理由 lifeos Skill 的 Daily 分支生成、本人确认的自然日日报。"
+            "管理由 lifeos Skill 生成、本人确认的自然日日报和周期报。"
             "CLI 只拥有落点、命名、权限、frontmatter 与状态；不生成正文、不调用模型。"
         ),
         epilog=(
             "自然日按 Asia/Shanghai 的 [00:00, 24:00) 计算。"
-            "begin/write/confirm 与 migrate-activity-ids --apply 会写入日报；"
-            "path/list/validate 及迁移默认预演只读。"
+            "begin/write/confirm 会写入日报，周期报使用 periodic 子命令；"
+            "path/list/validate 与 periodic sources/path/list 只读；"
+            "所有正文都由 lifeos Skill 生成。"
         ),
     )
     reports.set_defaults(reports_root=data_dir / "reports")
@@ -570,14 +765,135 @@ def register_reports_parser(domains: Any, data_dir: Path) -> None:
     command.add_argument("--json", action="store_true", help="以 JSON 输出日报、总数与缺失日")
     command.set_defaults(handler=_with_migration_recovery(command_list))
 
+    periodic = commands.add_parser(
+        "periodic",
+        help="基于 confirmed 日报管理周、月、季度、半年或年度报告",
+        description=(
+            "周、月、季度、半年或年度报告只消费目标窗口内的 confirmed 日报，"
+            "不重新采集 Sessions、Git、DChat 或 Work。"
+            "CLI 负责规范周期、来源清单、草稿与确认状态；正文由 lifeos Skill 的 Periodic 分支生成。"
+        ),
+        epilog=(
+            "周期使用 YYYY-Www、YYYY-MM、YYYY-Qn、YYYY-Hn 或 YYYY。"
+            "周按 ISO 周一至周日计算，其他周期按自然日历计算。"
+        ),
+    )
+    periodic_commands = periodic.add_subparsers(dest="periodic_command", required=True)
+
+    def add_period_argument(parser: Any) -> None:
+        parser.add_argument(
+            "--period",
+            type=_validate_period,
+            required=True,
+            metavar="PERIOD",
+            help="规范周期：YYYY-Www、YYYY-MM、YYYY-Qn、YYYY-Hn 或 YYYY",
+        )
+
+    command = periodic_commands.add_parser(
+        "sources",
+        help="分页只读返回周期窗口和 confirmed 日报正文",
+        description=(
+            "按周期逐日检查 Reports Runtime，只分页返回 confirmed 日报正文。"
+            "第一页同时返回完整来源、缺失日和 draft 日清单；"
+            "按 next_offset 继续可读完长周期且不截断正文。"
+        ),
+    )
+    add_period_argument(command)
+    command.add_argument(
+        "--offset",
+        type=_validate_nonnegative,
+        default=0,
+        metavar="N",
+        help="从第 N 份 confirmed 日报开始（默认 0）",
+    )
+    command.add_argument(
+        "--limit",
+        type=_validate_page_size,
+        default=7,
+        metavar="N",
+        help="本页最多返回的日报数，1 到 31（默认 7）",
+    )
+    command.add_argument("--json", action="store_true", help="以 JSON 输出来源正文与窗口")
+    command.set_defaults(handler=_with_migration_recovery(command_periodic_sources))
+
+    command = periodic_commands.add_parser(
+        "begin",
+        help="按当前 confirmed 日报来源建立周期报草稿",
+        description=(
+            "快照目标周期内的 confirmed、缺失和 draft 日报清单并建立草稿。"
+            "没有 confirmed 日报时拒绝建立；confirmed 周期报只有 --redo 才能重做。"
+        ),
+    )
+    add_period_argument(command)
+    command.add_argument(
+        "--redo",
+        action="store_true",
+        help="确认状态时先保留 superseded 快照再重建草稿",
+    )
+    command.add_argument("--json", action="store_true", help="以 JSON 输出路径、来源和状态")
+    command.set_defaults(handler=_with_migration_recovery(command_periodic_begin))
+
+    command = periodic_commands.add_parser(
+        "write",
+        help="原子写入周期报 draft 正文（不确认）",
+        description=(
+            "把 lifeos Skill 的 Periodic 分支生成的 Markdown 正文写入既有 draft；"
+            "来源清单与状态由 CLI 保留。"
+        ),
+    )
+    add_period_argument(command)
+    command.add_argument(
+        "--body-file",
+        type=Path,
+        required=True,
+        metavar="PATH|-",
+        help="Markdown 正文文件；使用 - 从标准输入读取",
+    )
+    command.add_argument("--json", action="store_true", help="以 JSON 输出写入后的状态")
+    command.set_defaults(handler=_with_migration_recovery(command_periodic_write))
+
+    command = periodic_commands.add_parser(
+        "confirm",
+        help="校验来源未漂移后确认周期报（需要本人确认）",
+        description=(
+            "确认 draft 前核对当前 confirmed、缺失和 draft 日报清单仍与生成时一致；"
+            "已确认周期报幂等返回。"
+        ),
+        epilog="确认是状态写入；只有本人明确确认后才应执行。",
+    )
+    add_period_argument(command)
+    command.add_argument("--json", action="store_true", help="以 JSON 输出校验与状态变化")
+    command.set_defaults(handler=_with_migration_recovery(command_periodic_confirm))
+
+    command = periodic_commands.add_parser(
+        "path",
+        help="只读查询周期报落点、状态、窗口与快照",
+    )
+    add_period_argument(command)
+    command.add_argument("--json", action="store_true", help="以 JSON 输出路径和状态")
+    command.set_defaults(handler=_with_migration_recovery(command_periodic_path))
+
+    command = periodic_commands.add_parser(
+        "list",
+        help="只读列出周期报及其来源覆盖",
+    )
+    command.add_argument(
+        "--status",
+        choices=store.STATUSES,
+        metavar="{draft,confirmed}",
+        help="只列出指定状态",
+    )
+    command.add_argument("--json", action="store_true", help="以 JSON 输出周期报列表")
+    command.set_defaults(handler=_with_migration_recovery(command_periodic_list))
+
     command = commands.add_parser(
         "validate",
-        help="只读校验全部日报的命名、frontmatter、状态与权限",
+        help="只读校验全部日报和周期报的命名、frontmatter、状态与权限",
         description=(
-            "检查全部当前日报的文件名与 day、必填 frontmatter、状态与 confirmed_at、"
+            "检查全部当前日报和周期报的文件名、必填 frontmatter、状态与 confirmed_at、"
             "正文、目录/文件权限及 stray 文件。任何问题都以失败退出并指出路径。"
         ),
-        epilog="validate 不创建、不修改、不确认日报；确认动作请使用 confirm。",
+        epilog="validate 不创建、不修改、不确认任何报告。",
     )
     command.add_argument("--json", action="store_true", help="以 JSON 输出检查范围、问题与 ok 状态")
     command.set_defaults(handler=_with_migration_recovery(command_validate))

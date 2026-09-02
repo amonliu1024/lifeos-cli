@@ -12,7 +12,7 @@ lifeos-cli 仓库
                     |
                     v
 $LIFEOS_HOME（默认 ~/.local/share/lifeos）
-  Work 权威事实、审计事件、证据存储、日报
+  Work 权威事实、审计事件、证据存储、日报与周期报
 ```
 
 ## 能力组合
@@ -43,9 +43,11 @@ $LIFEOS_HOME（默认 ~/.local/share/lifeos）
 | Agent 会话派生数据 | Sessions Runtime | `lifeos sessions scan/rebuild/prune` |
 | 本地提交证据 | Git Evidence Runtime | `lifeos git` |
 | DChat 原始 revision 与索引 | DChat Runtime | `lifeos dchat scan` |
-| 日报 | Reports Runtime | `lifeos reports` 与 Agent Skill |
+| 日报与周期报 | Reports Runtime | `lifeos reports` 与 Agent Skill |
 
-`lifeos web serve` 是本地读取 adapter，不是新的数据 Owner。它只接受回环地址，浏览器通过同源接口取得一次性投影；打开日报原文时，服务端根据日期从 Reports Runtime 根目录重新推导规范路径，不接受浏览器传入文件路径。静态资源来自仓内固定 package，不提供通用文件服务。
+Reports Runtime 以 `daily/` 保存由本机辅助证据生成的自然日日报，以 `periodic/` 保存只消费 confirmed 日报的周、月、季度、半年和年度报告。两类报告复用同一互斥锁、私有权限、原子替换与 draft/confirmed 状态；周期窗口和来源清单由 CLI 拥有，正文由 Agent Skill 拥有。
+
+`lifeos web serve` 是本地读取 adapter，不是新的数据 Owner。它只接受回环地址，浏览器通过同源接口取得一次性投影；打开日报原文时，服务端根据日期从 Reports Runtime 根目录重新推导规范路径，不接受浏览器传入文件路径。静态资源来自仓内固定 package，不提供通用文件服务。周期报暂不投影到 Web。
 
 派生 Markdown 和 SQLite 索引都不是替代事实源。Work 写入必须在同一个事务边界内完成互斥锁、校验、原子替换、审计事件和派生视图刷新。
 
@@ -82,10 +84,10 @@ Project Catalog 扫描全部配置根，不跟随符号链接，也不从 Work �
                               有边界的 CLI 视图
                                       |
                                       v
-                              Agent 解释 / 日报
+                        Agent 解释 / 日报 / 周期报
 ```
 
-来源适配器保留来源身份；输入不完整或未知时直接报告，不做猜测。Sessions、Git 和 DChat 证据不会写入 Work。日报工作流可以组合这些证据，但候选工作只有经过用户单独授权后才能成为 Work 事实。
+来源适配器保留来源身份；输入不完整或未知时直接报告，不做猜测。Sessions、Git 和 DChat 证据不会写入 Work。日报工作流可以组合这些证据；周期报只消费已经确认的日报正文，不回到这些底层来源。两类报告里的候选工作都只有经过用户单独授权后才能成为 Work 事实。
 
 DChat 的 `p2p / extp2p` 私聊全部进入正文采集；`channel / extchannel` 只有 VID 至少由一份当前有效项目清单声明时进入。多个项目声明同一 VID 时只采集一次，索引保留全部项目关联；VID 从全部清单退出只停止后续正文读取，既有不可变 revision 继续保留。
 

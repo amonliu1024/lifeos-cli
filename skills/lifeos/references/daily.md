@@ -195,4 +195,4 @@ Daily 发现“后续要做”只决定日报如何表达。只有本人另外�
 
 ## 边界
 
-日报不生成周报、月报或复盘，不写 Obsidian；不关闭、改期或变更已有 Work 事实，也不替本人确认。Git 证据只读本地显式注册仓库，不上传、不访问 remote、不保存完整 diff、changed paths、author email 或未提交状态。DChat 只读结构化类型为 `p2p / extp2p` 的私聊和当前项目清单声明的群聊，不发送消息、不修改 DChat、不下载附件本体；DChat 声称的完成或上线必须由更高等级证据核对。
+Daily 分支不生成周期报或复盘，不写 Obsidian；周、月、季度、半年和年度总结转顶层 Periodic 分支。不关闭、改期或变更已有 Work 事实，也不替本人确认。Git 证据只读本地显式注册仓库，不上传、不访问 remote、不保存完整 diff、changed paths、author email 或未提交状态。DChat 只读结构化类型为 `p2p / extp2p` 的私聊和当前项目清单声明的群聊，不发送消息、不修改 DChat、不下载附件本体；DChat 声称的完成或上线必须由更高等级证据核对。

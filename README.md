@@ -21,7 +21,7 @@ LifeOS 是一套完全跑在自己电脑上的个人工作系统，帮你把四�
 
 一个人同时推进多件事情时，真正的困难往往不是没做，而是说不清楚。计划在脑子里，进展在聊天里，结果散在提交和文档里，过几天回头只能靠记忆重建。更麻烦的是两种误认：把“我说过要做”当成“我答应了”，把“我提交过代码”当成“这件事已经交付”。
 
-LifeOS 的回答是把三样东西分开，并且不让它们互相推导。**工作事实**是你本人确认过的承诺，只能通过 `lifeos work` 写入，每次写入都要求来源，状态变化要求原因，并留下一条不可改写的审计事件。**辅助证据**是本机的 Agent 会话、Git 提交和聊天记录，只用来还原发生过什么，不会自己变成待办，也不会自己关掉一条待办。**日报**是对一天的解释，由证据生成，由你确认。
+LifeOS 的回答是把三样东西分开，并且不让它们互相推导。**工作事实**是你本人确认过的承诺，只能通过 `lifeos work` 写入，每次写入都要求来源，状态变化要求原因，并留下一条不可改写的审计事件。**辅助证据**是本机的 Agent 会话、Git 提交和聊天记录，只用来还原发生过什么，不会自己变成待办，也不会自己关掉一条待办。**报告**先把证据整理成由你确认的日报，再从已确认日报中形成周、月、季度、半年或年度总结。
 
 所以证据被刻意做得比结论弱：本地提交只能证明提交存在，聊天消息只能证明有人说过这句话，两者都不能证明已经推送、部署或通过验证。LifeOS 宁可让你多确认一次，也不替你把推断记成事实。
 
@@ -32,6 +32,10 @@ LifeOS 的回答是把三样东西分开，并且不让它们互相推导。**�
 写日报最费劲的从来不是写，是回忆。LifeOS 把回忆这一步交给确定性采集：CLI 先取得目标日的唯一自然日窗口，Agent 按这个窗口读取当天的 Agent 会话、Git 提交、IM聊天和待办变更，把它们归并成几条真实的工作主线——哪件事为什么做、判断怎么变的、最后停在哪一层，再写成正文。你要做的只是看一眼，然后 `lifeos reports confirm`。
 
 它也不会替你把话说满。实现、本地测试、提交、推送、部署和目标环境验证分层记录，前一层不能推出后一层；证据不完整的地方会写清楚边界，而不是补一句听上去完整的话。日报里出现的候选待办同样不会自动进账本——确认日报和确认“我要做这件事”是两个动作。
+
+### 一段时间过去后，看见工作怎样变化
+
+周期报不重新扫描会话、提交或聊天，而是只读取目标周、月、季度、半年或自然年内已经确认的日报。Agent 把分散在多天里的同一条主线重新连起来：从哪里出发，哪个判断被证伪，最终停在什么层级，以及这段变化留下了什么可复用认识。结果先保存为草稿，仍由你确认；缺失或还没确认的日报会单独列出，不会被解释成“那天没有工作”。
 
 ### 打开终端，就知道现在该做什么
 
@@ -97,7 +101,7 @@ lifeos work task-reschedule --help
 | 领域 | 作用 |
 | --- | --- |
 | `lifeos work` | 个人工作事实：项目引用、事项、里程碑、待办、闪念、术语、成果胶囊，查询与写入都在这里 |
-| `lifeos reports` | 日报的落点、权限、frontmatter、草稿写入与确认状态 |
+| `lifeos reports` | 日报与周期报的落点、权限、frontmatter、草稿写入与确认状态 |
 | `lifeos project` | 校验项目工作区的 `lifeos-project.json`，并从配置的发现根动态发现项目 |
 | `lifeos sessions` | 只读采集本机支持的 Agent 会话来源，维护私有派生索引 |
 | `lifeos git` | 只读本地提交作为证据，全程不访问远端 |
@@ -208,9 +212,23 @@ lifeos reports migrate-activity-ids --apply      # 备份后只迁移历史日�
 
 Activity 使用 `ACT-` 加 24 位 Base32 的稳定短 ID。它仍由来源、会话和 Slice 聚合内容确定；旧版完整 SHA-256 Activity ID 不再被 index、pack 或 reports 接受。升级已有 Runtime 时，先预演再应用 `reports migrate-activity-ids`：命令直接转换旧摘要并检查碰撞，不重新采集会话内容，apply 前会在 Runtime `backups/` 中保存完整 Reports 备份。
 
+## 周期报
+
+周期报正文由 Skill 的 Periodic 分支生成。CLI 负责把周、月、季度、半年和自然年归一成确定窗口，只提供其中已经 confirmed 的日报正文，并保存草稿生成时的来源覆盖。
+
+```bash
+lifeos reports periodic sources --period 2026-W35 --json
+lifeos reports periodic begin --period 2026-W35 --json
+lifeos reports periodic write --period 2026-W35 --body-file /tmp/weekly.md
+lifeos reports periodic confirm --period 2026-W35
+lifeos reports periodic list --json
+```
+
+规范周期使用 `YYYY-Www`、`YYYY-MM`、`YYYY-Qn`、`YYYY-Hn` 或 `YYYY`。周按 ISO 周一至周日计算，其他周期按自然日历计算。`sources` 默认每页返回 7 份 confirmed 日报，按 `next_offset` 继续读取，可避免长周期正文被截断；第一页同时返回完整覆盖盘点。缺失日报和仍为 draft 的日报保存在周期报 frontmatter 并在确认时核对；来源状态变化后，旧草稿必须重新生成。周期报当前只保存在 Private Runtime，不进入只读 Web 工作台。
+
 ## Agent Skill
 
-[`skills/lifeos/`](skills/lifeos/) 是由仓库维护的通用 Skill：Agent 先探测本机能力，再判断请求属于项目、Work 还是日报，只加载该分支需要的说明。CLI 版本、制品、SmartWork / cc-switch 同步与回滚统一按 [`DEPLOYMENT.md`](DEPLOYMENT.md) 执行；个人偏好不会写回仓库 Skill，同步动作也不能推导出真实 Runtime 已切换。
+[`skills/lifeos/`](skills/lifeos/) 是由仓库维护的通用 Skill：Agent 先探测本机能力，再判断请求属于项目、Work、日报还是周期报，只加载该分支需要的说明。CLI 版本、制品、SmartWork / cc-switch 同步与回滚统一按 [`DEPLOYMENT.md`](DEPLOYMENT.md) 执行；个人偏好不会写回仓库 Skill，同步动作也不能推导出真实 Runtime 已切换。
 
 ## 配置与数据边界
 
@@ -270,7 +288,7 @@ Git 仓库
 $LIFEOS_HOME/
   Work 事实与审计事件
   Sessions / Git / DChat 证据
-  日报
+  日报与周期报
 ```
 
 仓库不会创建或管理可选的 `agent-profile.md`。通用 Skill 可以读取其中的称呼和输出偏好，但该文件不能授予写入或外部操作权限。

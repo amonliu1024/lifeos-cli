@@ -394,7 +394,7 @@ class PublicInterfaceTest(unittest.TestCase):
         root_help = self.run_root_cli("--help").stdout
         self.assertIn("sessions 只读 Agent 应用来源，维护私有派生索引", root_help)
         self.assertIn("git      只读本地 Git 提交，维护日报辅助证据快照", root_help)
-        self.assertIn("reports  日报落点、frontmatter 与确认状态", root_help)
+        self.assertIn("reports  日报与周期报的结构和状态", root_help)
 
         work_help = self.run_root_cli("work", "--help").stdout
         for phrase in (

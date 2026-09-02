@@ -1,4 +1,4 @@
-"""Filesystem layout, frontmatter and state rules for daily reports.
+"""Filesystem layout, frontmatter and state rules for LifeOS reports.
 
 The frontmatter is a deliberately small subset of YAML -- flat scalars and
 lists of strings -- so it can be parsed by this module without a third-party
@@ -19,7 +19,7 @@ import stat
 import tempfile
 from datetime import date, datetime, time, timedelta
 from pathlib import Path
-from typing import Any, Dict, Iterator, List, Optional, Tuple
+from typing import Any, Callable, Dict, Iterator, List, Optional, Tuple
 from zoneinfo import ZoneInfo
 
 from lifeos_sessions.activity_ids import (
@@ -31,6 +31,7 @@ from lifeos_sessions.activity_ids import (
 
 TIMEZONE = ZoneInfo("Asia/Shanghai")
 DAILY_DIRNAME = "daily"
+PERIODIC_DIRNAME = "periodic"
 DIR_MODE = 0o700
 FILE_MODE = 0o600
 STATUSES = ("draft", "confirmed")
@@ -39,6 +40,8 @@ GIT_COMMIT_ID = re.compile(r"^[A-Za-z0-9][A-Za-z0-9_.-]*@[0-9a-f]{40}$")
 
 SCALAR_KEYS = (
     "day",
+    "period",
+    "period_type",
     "status",
     "generated_at",
     "confirmed_at",
@@ -55,7 +58,14 @@ COUNT_KEYS = (
     "unresolved",
     "git_commits",
 )
-LIST_KEYS = ("activity_ids", "work_event_ids", "git_commit_ids")
+LIST_KEYS = (
+    "activity_ids",
+    "work_event_ids",
+    "git_commit_ids",
+    "source_days",
+    "missing_days",
+    "draft_days",
+)
 FIELD_ORDER = SCALAR_KEYS + COUNT_KEYS + LIST_KEYS
 REQUIRED_KEYS = (
     "day",
@@ -75,6 +85,12 @@ REQUIRED_KEYS = (
 
 DAY_NAME = re.compile(r"^(\d{4}-\d{2}-\d{2})\.md$")
 SUPERSEDED_NAME = re.compile(r"^(\d{4}-\d{2}-\d{2})\.superseded-[^/]+\.md$")
+PERIOD_NAME = re.compile(
+    r"^(\d{4}(?:-W\d{2}|-\d{2}|-Q[1-4]|-H[12])?)\.md$"
+)
+PERIOD_SUPERSEDED_NAME = re.compile(
+    r"^(\d{4}(?:-W\d{2}|-\d{2}|-Q[1-4]|-H[12])?)\.superseded-[^/]+\.md$"
+)
 ACTIVITY_ID_MIGRATION_MARKER = ".reports-activity-id-migration.json"
 ACTIVITY_ID_MIGRATION_OPERATION = "reports-short-activity-ids"
 ACTIVITY_ID_MIGRATION_STAGING_PREFIX = ".lifeos-reports-migration-"
@@ -86,6 +102,9 @@ SKELETON_BODY = (
     "<!-- 正文由 lifeos skill 的 Daily 分支写入：概览、按项目分组的事实、推断区块、"
     "可能要进 work 的候选。 -->\n"
 )
+PERIODIC_SKELETON_BODY = (
+    "<!-- 正文由 lifeos skill 的 Periodic 分支基于本周期 confirmed 日报写入。 -->\n"
+)
 
 
 class ReportError(RuntimeError):
@@ -96,8 +115,17 @@ def daily_dir(reports_root: Path) -> Path:
     return reports_root / DAILY_DIRNAME
 
 
+def periodic_dir(reports_root: Path) -> Path:
+    return reports_root / PERIODIC_DIRNAME
+
+
 def report_path(reports_root: Path, day: date) -> Path:
     return daily_dir(reports_root) / f"{day.isoformat()}.md"
+
+
+def periodic_report_path(reports_root: Path, period: str) -> Path:
+    period_window(period)
+    return periodic_dir(reports_root) / f"{period}.md"
 
 
 @contextlib.contextmanager
@@ -126,6 +154,14 @@ def superseded_paths(reports_root: Path, day: date) -> List[Path]:
     )
 
 
+def periodic_superseded_paths(reports_root: Path, period: str) -> List[Path]:
+    directory = periodic_dir(reports_root)
+    if not directory.is_dir():
+        return []
+    prefix = f"{period}.superseded-"
+    return sorted(path for path in directory.glob(f"{prefix}*.md") if path.is_file())
+
+
 def day_window(day: date) -> Tuple[datetime, datetime]:
     """The natural day in Asia/Shanghai.
 
@@ -137,6 +173,73 @@ def day_window(day: date) -> Tuple[datetime, datetime]:
     return start, start + timedelta(days=1)
 
 
+def period_window(period: str) -> Tuple[str, date, date]:
+    """Normalize a canonical week, month, quarter, half-year or year window."""
+
+    week = re.fullmatch(r"(\d{4})-W(\d{2})", period)
+    if week:
+        try:
+            start = date.fromisocalendar(int(week.group(1)), int(week.group(2)), 1)
+            end = start + timedelta(days=7)
+        except (ValueError, OverflowError) as exc:
+            raise ReportError(f"周期非法：{period}") from exc
+        return "week", start, end
+
+    month = re.fullmatch(r"(\d{4})-(\d{2})", period)
+    if month:
+        year, month_number = int(month.group(1)), int(month.group(2))
+        try:
+            start = date(year, month_number, 1)
+        except ValueError as exc:
+            raise ReportError(f"周期非法：{period}") from exc
+        try:
+            end = date(year + (month_number == 12), month_number % 12 + 1, 1)
+        except ValueError as exc:
+            raise ReportError(f"周期非法：{period}") from exc
+        return "month", start, end
+
+    quarter = re.fullmatch(r"(\d{4})-Q([1-4])", period)
+    if quarter:
+        year, quarter_number = int(quarter.group(1)), int(quarter.group(2))
+        start_month = (quarter_number - 1) * 3 + 1
+        end_month = start_month + 3
+        try:
+            start = date(year, start_month, 1)
+            end = date(year + (end_month > 12), ((end_month - 1) % 12) + 1, 1)
+        except ValueError as exc:
+            raise ReportError(f"周期非法：{period}") from exc
+        return "quarter", start, end
+
+    half = re.fullmatch(r"(\d{4})-H([12])", period)
+    if half:
+        year, half_number = int(half.group(1)), int(half.group(2))
+        try:
+            start = date(year, 1 if half_number == 1 else 7, 1)
+            end = date(year, 7, 1) if half_number == 1 else date(year + 1, 1, 1)
+        except ValueError as exc:
+            raise ReportError(f"周期非法：{period}") from exc
+        return "half", start, end
+
+    year = re.fullmatch(r"(\d{4})", period)
+    if year:
+        year_number = int(year.group(1))
+        try:
+            return "year", date(year_number, 1, 1), date(year_number + 1, 1, 1)
+        except ValueError as exc:
+            raise ReportError(f"周期非法：{period}") from exc
+
+    raise ReportError(
+        "周期必须使用 YYYY-Www、YYYY-MM、YYYY-Qn、YYYY-Hn 或 YYYY"
+    )
+
+
+def period_window_text(period: str) -> str:
+    _kind, start, end = period_window(period)
+    window_from, _ = day_window(start)
+    window_to, _ = day_window(end)
+    return f"{window_from.isoformat()}/{window_to.isoformat()}"
+
+
 def window_text(day: date) -> str:
     start, end = day_window(day)
     return f"{start.isoformat()}/{end.isoformat()}"
@@ -144,6 +247,14 @@ def window_text(day: date) -> str:
 
 def ensure_daily_dir(reports_root: Path) -> Path:
     directory = daily_dir(reports_root)
+    directory.mkdir(parents=True, exist_ok=True)
+    for path in (reports_root, directory):
+        os.chmod(path, DIR_MODE)
+    return directory
+
+
+def ensure_periodic_dir(reports_root: Path) -> Path:
+    directory = periodic_dir(reports_root)
     directory.mkdir(parents=True, exist_ok=True)
     for path in (reports_root, directory):
         os.chmod(path, DIR_MODE)
@@ -246,6 +357,95 @@ def write_report(path: Path, meta: Dict[str, Any], body: str) -> None:
             os.unlink(temporary_name)
 
 
+def prepare_report_draft(
+    path: Path,
+    meta: Dict[str, Any],
+    body: str,
+    *,
+    redo: bool,
+    superseded_filename: str,
+    label: str,
+    ensure_directory: Callable[[], Path],
+) -> Tuple[str, Optional[Path]]:
+    """Apply the shared nonexistent/draft/confirmed preparation state machine."""
+
+    state = "new"
+    superseded: Optional[Path] = None
+    if path.exists():
+        try:
+            current_meta, _current_body = read_report(path)
+        except ReportError as exc:
+            raise ReportError(f"已存在的{label}无法解析，请先修复或移走：{path}（{exc}）") from exc
+        status = current_meta.get("status")
+        if status == "confirmed" and not redo:
+            raise ReportError(
+                f"{label}已确认，不会自动覆盖。确实要重做时加 --redo，"
+                "旧文件会另存为 superseded 快照。"
+            )
+        state = "redo" if status == "confirmed" else "overwrite"
+    ensure_directory()
+    if state == "redo":
+        superseded = path.parent / superseded_filename
+        path.rename(superseded)
+    write_report(path, meta, body)
+    return state, superseded
+
+
+def write_report_draft(
+    path: Path,
+    body: str,
+    *,
+    validate: Callable[[Path], List[str]],
+    begin_hint: str,
+    label: str,
+    meta_updates: Optional[Dict[str, Any]] = None,
+) -> Dict[str, Any]:
+    """Validate and atomically replace prose while preserving report-owned state."""
+
+    if not path.exists():
+        raise ReportError(f"{label}还不存在；请先运行 {begin_hint}")
+    problems = validate(path)
+    if problems:
+        raise ReportError(f"既有{label}未通过校验，不予写入：{'；'.join(problems)}")
+    meta, _existing = read_report(path)
+    if meta.get("status") != "draft":
+        raise ReportError(
+            f"{label}已确认；确实要重做时先运行 {begin_hint} --redo"
+        )
+    if meta_updates:
+        meta.update(meta_updates)
+    write_report(path, meta, body)
+    return meta
+
+
+def confirm_report_draft(
+    path: Path,
+    *,
+    validate: Callable[[Path], List[str]],
+    label: str,
+    missing_message: Optional[str] = None,
+    validate_current: Optional[Callable[[Path], List[str]]] = None,
+) -> Tuple[Dict[str, Any], bool]:
+    """Apply the shared validated and idempotent draft-to-confirmed transition."""
+
+    if not path.exists():
+        raise ReportError(missing_message or f"{label}还不存在：{path}")
+    problems = validate(path)
+    if problems:
+        raise ReportError(f"{label}未通过校验，不予确认：{'；'.join(problems)}")
+    meta, body = read_report(path)
+    if meta.get("status") == "confirmed":
+        return meta, False
+    if validate_current:
+        problems = validate_current(path)
+        if problems:
+            raise ReportError(f"{label}未通过校验，不予确认：{'；'.join(problems)}")
+    meta["status"] = "confirmed"
+    meta["confirmed_at"] = now_text()
+    write_report(path, meta, body)
+    return meta, True
+
+
 def skeleton(day: date, generated_at: str) -> Dict[str, Any]:
     return {
         "day": day.isoformat(),
@@ -268,6 +468,87 @@ def skeleton(day: date, generated_at: str) -> Dict[str, Any]:
     }
 
 
+def _period_days(start: date, end: date) -> List[str]:
+    days: List[str] = []
+    cursor = start
+    while cursor < end:
+        days.append(cursor.isoformat())
+        cursor += timedelta(days=1)
+    return days
+
+
+def periodic_source_inventory(reports_root: Path, period: str) -> Dict[str, List[str]]:
+    """Classify every day in a period by its current Daily report state."""
+
+    _kind, start, end = period_window(period)
+    source_days: List[str] = []
+    missing_days: List[str] = []
+    draft_days: List[str] = []
+    for day_text in _period_days(start, end):
+        path = report_path(reports_root, date.fromisoformat(day_text))
+        if not path.exists():
+            missing_days.append(day_text)
+            continue
+        problems = check_report(path)
+        if problems:
+            raise ReportError(f"{path.name} 无法作为周期报来源：{'；'.join(problems)}")
+        meta, _body = read_report(path)
+        if meta.get("status") == "confirmed":
+            source_days.append(day_text)
+        else:
+            draft_days.append(day_text)
+    return {
+        "source_days": source_days,
+        "missing_days": missing_days,
+        "draft_days": draft_days,
+    }
+
+
+def periodic_sources(
+    reports_root: Path, period: str, *, offset: int = 0, limit: int = 7
+) -> Dict[str, Any]:
+    """Return the confirmed Daily bodies that may feed one periodic report."""
+
+    kind, start, end = period_window(period)
+    inventory = periodic_source_inventory(reports_root, period)
+    source_days = inventory["source_days"]
+    selected_days = source_days[offset : offset + limit]
+    reports = []
+    for day_text in selected_days:
+        path = report_path(reports_root, date.fromisoformat(day_text))
+        _meta, body = read_report(path)
+        reports.append({"day": day_text, "path": str(path), "body": body})
+    payload = {
+        "period": period,
+        "period_type": kind,
+        "window": {"from": day_window(start)[0].isoformat(), "to": day_window(end)[0].isoformat()},
+        "source_total": len(source_days),
+        "offset": offset,
+        "limit": limit,
+        "next_offset": offset + len(selected_days) if offset + len(selected_days) < len(source_days) else None,
+        "reports": reports,
+    }
+    if offset == 0:
+        payload["coverage"] = inventory
+    return payload
+
+
+def periodic_skeleton(
+    reports_root: Path, period: str, generated_at: str
+) -> Dict[str, Any]:
+    kind, _start, _end = period_window(period)
+    inventory = periodic_source_inventory(reports_root, period)
+    return {
+        "period": period,
+        "period_type": kind,
+        "status": "draft",
+        "generated_at": generated_at,
+        "confirmed_at": None,
+        "window": period_window_text(period),
+        **inventory,
+    }
+
+
 def now_text() -> str:
     return datetime.now(TIMEZONE).isoformat(timespec="seconds")
 
@@ -275,6 +556,11 @@ def now_text() -> str:
 def superseded_name(day: date) -> str:
     stamp = datetime.now(TIMEZONE).strftime("%Y%m%dT%H%M%S%z")
     return f"{day.isoformat()}.superseded-{stamp}.md"
+
+
+def periodic_superseded_name(period: str) -> str:
+    stamp = datetime.now(TIMEZONE).strftime("%Y%m%dT%H%M%S%z")
+    return f"{period}.superseded-{stamp}.md"
 
 
 def _mode(path: Path) -> int:
@@ -366,6 +652,104 @@ def check_report(
         problems.append("正文为空")
     if _mode(path) != FILE_MODE:
         problems.append(f"文件权限应为 {oct(FILE_MODE)}，实际 {oct(_mode(path))}")
+    return problems
+
+
+def check_periodic_report(
+    path: Path, *, canonical: bool = True, allow_skeleton: bool = False
+) -> List[str]:
+    """Validate one periodic report without making live Daily state historical."""
+
+    problems: List[str] = []
+    matched = (PERIOD_NAME if canonical else PERIOD_SUPERSEDED_NAME).match(path.name)
+    if not matched:
+        return [f"文件名不符合周期报命名：{path.name}"]
+    filename_period = matched.group(1)
+    try:
+        meta, body = read_report(path)
+    except ReportError as exc:
+        return [str(exc)]
+
+    for key in (
+        "period",
+        "period_type",
+        "status",
+        "generated_at",
+        "window",
+        "source_days",
+        "missing_days",
+        "draft_days",
+    ):
+        if key not in meta or meta.get(key) in (None, ""):
+            problems.append(f"缺少必填字段 {key}")
+    if meta.get("period") != filename_period:
+        problems.append(
+            f"period 与文件名不一致：{meta.get('period')} != {filename_period}"
+        )
+    try:
+        expected_type, start, end = period_window(filename_period)
+        expected_window = period_window_text(filename_period)
+    except ReportError as exc:
+        problems.append(str(exc))
+        expected_type, start, end, expected_window = None, None, None, None
+    if expected_type and meta.get("period_type") != expected_type:
+        problems.append(f"period_type 非法，应为 {expected_type}")
+    if expected_window and meta.get("window") != expected_window:
+        problems.append(f"window 与周期不一致，应为 {expected_window}")
+
+    status = meta.get("status")
+    if status not in STATUSES:
+        problems.append(f"status 非法：{status}")
+    if status == "confirmed" and not meta.get("confirmed_at"):
+        problems.append("confirmed 状态缺少 confirmed_at")
+    if status == "draft" and meta.get("confirmed_at"):
+        problems.append("draft 状态不应带 confirmed_at")
+
+    inventory_keys = ("source_days", "missing_days", "draft_days")
+    inventory: Dict[str, List[str]] = {}
+    for key in inventory_keys:
+        values = meta.get(key)
+        if not isinstance(values, list):
+            problems.append(f"{key} 必须是列表")
+            continue
+        normalized = [value if isinstance(value, str) else repr(value) for value in values]
+        if len(normalized) != len(set(normalized)):
+            problems.append(f"{key} 不能重复")
+        for value in values:
+            try:
+                parsed = date.fromisoformat(value)
+            except (TypeError, ValueError):
+                problems.append(f"{key} 日期非法：{value}")
+                continue
+            if start and end and not (start <= parsed < end):
+                problems.append(f"{key} 日期不在周期内：{value}")
+        inventory[key] = normalized
+    if len(inventory) == len(inventory_keys) and start and end:
+        combined = [value for key in inventory_keys for value in inventory[key]]
+        if len(combined) != len(set(combined)):
+            problems.append("source_days、missing_days 与 draft_days 不能重叠")
+        if set(combined) != set(_period_days(start, end)):
+            problems.append("日报来源清单必须完整覆盖周期内每个自然日")
+
+    if not body.strip() or (body == PERIODIC_SKELETON_BODY and not allow_skeleton):
+        problems.append("正文为空")
+    if _mode(path) != FILE_MODE:
+        problems.append(f"文件权限应为 {oct(FILE_MODE)}，实际 {oct(_mode(path))}")
+    return problems
+
+
+def check_periodic_sources_current(reports_root: Path, path: Path) -> List[str]:
+    """Reject confirmation when a draft's Daily source inventory has drifted."""
+
+    try:
+        meta, _body = read_report(path)
+        current = periodic_source_inventory(reports_root, str(meta.get("period")))
+    except ReportError as exc:
+        return [str(exc)]
+    problems = []
+    for key in ("source_days", "missing_days", "draft_days"):
+        if meta.get(key) != current[key]:
+            problems.append(f"{key} 已变化，请重新生成周期报草稿")
     return problems
 
 
@@ -573,28 +957,41 @@ def recover_activity_id_migration(reports_root: Path) -> Optional[str]:
 
 def check_directory(reports_root: Path) -> List[Tuple[Path, str]]:
     directory = daily_dir(reports_root)
-    if not directory.is_dir():
-        return []
     findings: List[Tuple[Path, str]] = []
-    for path in (reports_root, directory):
-        if _mode(path) != DIR_MODE:
+    directories = [path for path in (directory, periodic_dir(reports_root)) if path.is_dir()]
+    if directories and reports_root.is_dir() and _mode(reports_root) != DIR_MODE:
+        findings.append(
+            (reports_root, f"目录权限应为 {oct(DIR_MODE)}，实际 {oct(_mode(reports_root))}")
+        )
+    for current_dir in directories:
+        if _mode(current_dir) != DIR_MODE:
             findings.append(
-                (path, f"目录权限应为 {oct(DIR_MODE)}，实际 {oct(_mode(path))}")
+                (current_dir, f"目录权限应为 {oct(DIR_MODE)}，实际 {oct(_mode(current_dir))}")
             )
-    for path in sorted(directory.iterdir()):
-        if path.is_dir():
-            findings.append((path, "日报目录下不应出现子目录"))
-            continue
-        if path.name.startswith("."):
-            continue
-        if DAY_NAME.match(path.name):
-            findings.extend((path, problem) for problem in check_report(path))
-        elif SUPERSEDED_NAME.match(path.name):
-            findings.extend(
-                (path, problem) for problem in check_report(path, canonical=False)
-            )
-        else:
-            findings.append((path, "文件名既不是日报也不是 superseded 快照"))
+        is_daily = current_dir == directory
+        for path in sorted(current_dir.iterdir()):
+            if path.is_dir():
+                findings.append((path, f"{'日报' if is_daily else '周期报'}目录下不应出现子目录"))
+                continue
+            if path.name.startswith("."):
+                continue
+            if is_daily and DAY_NAME.match(path.name):
+                findings.extend((path, problem) for problem in check_report(path))
+            elif is_daily and SUPERSEDED_NAME.match(path.name):
+                findings.extend(
+                    (path, problem) for problem in check_report(path, canonical=False)
+                )
+            elif not is_daily and PERIOD_NAME.match(path.name):
+                findings.extend((path, problem) for problem in check_periodic_report(path))
+            elif not is_daily and PERIOD_SUPERSEDED_NAME.match(path.name):
+                findings.extend(
+                    (path, problem)
+                    for problem in check_periodic_report(path, canonical=False)
+                )
+            else:
+                findings.append(
+                    (path, f"文件名既不是{'日报' if is_daily else '周期报'}也不是 superseded 快照")
+                )
     return findings
 
 
@@ -616,6 +1013,37 @@ def list_reports(reports_root: Path) -> List[Dict[str, Any]]:
         for key in ("status", "generated_at", "confirmed_at", *COUNT_KEYS):
             row[key] = meta.get(key)
         row["superseded"] = len(superseded_paths(reports_root, date.fromisoformat(row["day"])))
+        rows.append(row)
+    return rows
+
+
+def list_periodic_reports(reports_root: Path) -> List[Dict[str, Any]]:
+    directory = periodic_dir(reports_root)
+    if not directory.is_dir():
+        return []
+    rows: List[Dict[str, Any]] = []
+    for path in sorted(directory.glob("*.md")):
+        matched = PERIOD_NAME.match(path.name)
+        if not matched:
+            continue
+        period = matched.group(1)
+        try:
+            meta, _body = read_report(path)
+        except ReportError as exc:
+            rows.append({"period": period, "path": str(path), "error": str(exc)})
+            continue
+        row = {
+            "period": period,
+            "path": str(path),
+            "period_type": meta.get("period_type"),
+            "status": meta.get("status"),
+            "generated_at": meta.get("generated_at"),
+            "confirmed_at": meta.get("confirmed_at"),
+            "source_days": len(meta.get("source_days", [])),
+            "missing_days": meta.get("missing_days", []),
+            "draft_days": meta.get("draft_days", []),
+            "superseded": len(periodic_superseded_paths(reports_root, period)),
+        }
         rows.append(row)
     return rows
 

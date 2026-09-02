@@ -71,14 +71,14 @@ from .commands.work_items import (
 )
 
 
-ROOT_DESCRIPTION = "人生 OS / LifeOS CLI：管理个人工作事实、Agent 会话与本地协作证据、日报状态。"
+ROOT_DESCRIPTION = "人生 OS / LifeOS CLI：管理个人工作事实、Agent 会话、本地协作证据与报告状态。"
 ROOT_EPILOG = """领域边界：
   project  校验项目工作区的 lifeos-project.json；不写 Private Runtime。
   work     个人工作事实（项目引用、事项、待办、闪念、成果胶囊）；查询与写入都在此域。
   sessions 只读 Agent 应用来源，维护私有派生索引；不写来源日志、Work 或日报。
   git      只读本地 Git 提交，维护日报辅助证据快照；不修改仓库、remote、Work 或日报正文。
   dchat    只读 p2p / extp2p 私聊与项目清单群聊，维护私有原始证据；不发送消息、修改 DChat 或写 Work。
-  reports  日报落点、frontmatter 与确认状态；正文由 lifeos Skill 的 Daily 分支维护。
+  reports  日报与周期报的结构和状态；正文由 lifeos Skill 的对应分支维护。
   web      只读本地工作台；只监听回环地址，不写 Work、日报或其它 Runtime。
 
 所有时间窗口使用半开区间 [from, to)；具体参数、默认值和写入边界以对应子命令 --help 为准。"""
