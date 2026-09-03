@@ -348,10 +348,11 @@ def command_periodic_begin(args: Any) -> None:
     path = store.periodic_report_path(reports_root, period)
     with store.locked(reports_root):
         try:
-            meta = store.periodic_skeleton(reports_root, period, store.now_text())
+            inventory = store.periodic_source_inventory(reports_root, period)
+            meta = store.periodic_skeleton(period, store.now_text())
         except ReportError as exc:
             _fail(str(exc))
-        if not meta["source_days"]:
+        if not inventory["source_days"]:
             _fail(f"{period} 没有已确认日报，无法建立周期报草稿")
         try:
             state, superseded_path = store.prepare_report_draft(
@@ -380,15 +381,14 @@ def command_periodic_begin(args: Any) -> None:
                 "from": store.day_window(start)[0].isoformat(),
                 "to": store.day_window(end)[0].isoformat(),
             },
-            "source_days": meta["source_days"],
-            "missing_days": meta["missing_days"],
-            "draft_days": meta["draft_days"],
+            **inventory,
             "superseded": superseded,
         },
         [
             str(path),
-            f"{label} · 来源 {len(meta['source_days'])} 份 confirmed 日报"
-            f" · 缺失 {len(meta['missing_days'])} 天 · draft {len(meta['draft_days'])} 天",
+            f"{label} · 来源 {len(inventory['source_days'])} 份 confirmed 日报"
+            f" · 缺失 {len(inventory['missing_days'])} 天"
+            f" · draft {len(inventory['draft_days'])} 天",
         ],
     )
 
@@ -426,9 +426,6 @@ def command_periodic_confirm(args: Any) -> None:
                 validate=store.check_periodic_report,
                 label=f"{args.period} 的周期报",
                 missing_message=f"{args.period} 还没有周期报：{path}",
-                validate_current=lambda item: store.check_periodic_sources_current(
-                    args.reports_root, item
-                ),
             )
         except ReportError as exc:
             _fail(str(exc))
@@ -479,9 +476,7 @@ def command_periodic_path(args: Any) -> None:
         else:
             for key in ("status", "generated_at", "confirmed_at"):
                 payload[key] = meta.get(key)
-            lines.append(
-                f"{meta.get('status')} · 来源 {len(meta.get('source_days', []))} 份 confirmed 日报"
-            )
+            lines.append(str(meta.get("status")))
     else:
         lines.append("尚未生成")
     if payload["superseded"]:
@@ -499,11 +494,7 @@ def command_periodic_list(args: Any) -> None:
         if row.get("error"):
             lines.append(f"{row['period']} · 无法解析：{row['error']}")
             continue
-        lines.append(
-            f"{row['period']} · {row.get('status')} · 来源 {row.get('source_days')} 份"
-            f" · 缺失 {len(row.get('missing_days', []))} 天"
-            f" · draft {len(row.get('draft_days', []))} 天"
-        )
+        lines.append(f"{row['period']} · {row.get('status')}")
     if not rows:
         lines.append("没有符合条件的周期报。")
     _emit(args, payload, lines)
@@ -771,7 +762,8 @@ def register_reports_parser(domains: Any, data_dir: Path) -> None:
         description=(
             "周、月、季度、半年或年度报告只消费目标窗口内的 confirmed 日报，"
             "不重新采集 Sessions、Git、DChat 或 Work。"
-            "CLI 负责规范周期、来源清单、草稿与确认状态；正文由 lifeos Skill 的 Periodic 分支生成。"
+            "CLI 负责规范周期、临时返回来源、保存草稿与确认状态；"
+            "正文由 lifeos Skill 的 Periodic 分支生成。"
         ),
         epilog=(
             "周期使用 YYYY-Www、YYYY-MM、YYYY-Qn、YYYY-Hn 或 YYYY。"
@@ -838,7 +830,7 @@ def register_reports_parser(domains: Any, data_dir: Path) -> None:
         help="原子写入周期报 draft 正文（不确认）",
         description=(
             "把 lifeos Skill 的 Periodic 分支生成的 Markdown 正文写入既有 draft；"
-            "来源清单与状态由 CLI 保留。"
+            "周期、窗口与状态由 CLI 保留。"
         ),
     )
     add_period_argument(command)
@@ -854,9 +846,9 @@ def register_reports_parser(domains: Any, data_dir: Path) -> None:
 
     command = periodic_commands.add_parser(
         "confirm",
-        help="校验来源未漂移后确认周期报（需要本人确认）",
+        help="确认本人已审阅的周期报草稿（需要本人确认）",
         description=(
-            "确认 draft 前核对当前 confirmed、缺失和 draft 日报清单仍与生成时一致；"
+            "确认只翻转本人已审阅草稿的状态，不重新读取日报；"
             "已确认周期报幂等返回。"
         ),
         epilog="确认是状态写入；只有本人明确确认后才应执行。",
@@ -875,7 +867,7 @@ def register_reports_parser(domains: Any, data_dir: Path) -> None:
 
     command = periodic_commands.add_parser(
         "list",
-        help="只读列出周期报及其来源覆盖",
+        help="只读列出周期报及其状态",
     )
     command.add_argument(
         "--status",

@@ -44,7 +44,7 @@ lifeos reports periodic sources --period <PERIOD> --json
 
 “经验”只写能够迁移到下一次工作的认识。“踩坑”只写合理路径因隐藏约束失败、证据误导判断或系统出现非预期行为，并且已经定位出可复用避免方式的经历；普通修错、参数调整和未完成事项不算。周期报不设置“下周关注”“下月计划”等下一周期清单，后续动作由项目与 LifeOS Work 继续维护。
 
-缺失日、draft 日、来源数量和其他机械审计信息由 CLI frontmatter 与交付说明承担，不为了完整性写进正文。只有来源缺口实质改变某条主线的可信范围时，才在该主线附近用自然语言说明当前能成立的结论。
+缺失日、draft 日、来源数量和其他生成时信息只由 CLI 当次输出与交付说明承担，不写入 frontmatter，也不为了完整性写进正文。只有来源缺口实质改变某条主线的可信范围时，才在该主线附近用自然语言说明当前能成立的结论。
 
 正文延续日报的个人复盘视角：从动作、判断和结果起笔，省略机械的“我”；不写 Agent 取证过程、授权表述或防御性免责句。
 
@@ -57,7 +57,7 @@ lifeos reports periodic begin --period <PERIOD> --json
 lifeos reports periodic write --period <PERIOD> --body-file <PATH|-> --json
 ```
 
-`begin` 会按当时的日报状态保存来源清单；正文通过 `write` 写入既有 draft，不直接编辑 Runtime 文件，也不在正文中提供 frontmatter。若 `begin` 返回的来源清单与写作时读取的 `sources` 不一致，重新读取来源后再写，不使用旧正文覆盖新来源。
+`begin` 会确认当时至少存在一份 confirmed 日报，建立只含周期、窗口和状态的紧凑草稿，并在命令输出中返回当次来源覆盖；正文通过 `write` 写入既有 draft，不直接编辑 Runtime 文件，也不在正文中提供 frontmatter。若 `begin` 返回的来源清单与写作时读取的 `sources` 不一致，重新读取来源后再写，不使用旧正文覆盖新来源。
 
 向本人交付草稿时，说明周期、confirmed 日报覆盖数、缺失日和 draft 日；这些属于确认依据，不自动进入报告正文。本人明确确认后才运行：
 
@@ -66,9 +66,7 @@ lifeos reports periodic confirm --period <PERIOD> --json
 lifeos reports validate
 ```
 
-确认因来源状态变化被拒绝时，重新执行 `sources → begin → write`，不要绕过来源检查或直接修改 frontmatter。
-
-完成标准：周期报正文与来源快照一致并保持 draft；只有本人明确确认后才成为 confirmed，随后 Reports 全量校验通过。
+确认只表示本人接受当前周期报草稿，不重新读取或比对日报。完成标准：周期报保持 draft，直到本人明确确认后才成为 confirmed，随后 Reports 全量校验通过。
 
 ## 边界
 

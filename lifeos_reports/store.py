@@ -62,9 +62,6 @@ LIST_KEYS = (
     "activity_ids",
     "work_event_ids",
     "git_commit_ids",
-    "source_days",
-    "missing_days",
-    "draft_days",
 )
 FIELD_ORDER = SCALAR_KEYS + COUNT_KEYS + LIST_KEYS
 REQUIRED_KEYS = (
@@ -533,11 +530,8 @@ def periodic_sources(
     return payload
 
 
-def periodic_skeleton(
-    reports_root: Path, period: str, generated_at: str
-) -> Dict[str, Any]:
+def periodic_skeleton(period: str, generated_at: str) -> Dict[str, Any]:
     kind, _start, _end = period_window(period)
-    inventory = periodic_source_inventory(reports_root, period)
     return {
         "period": period,
         "period_type": kind,
@@ -545,7 +539,6 @@ def periodic_skeleton(
         "generated_at": generated_at,
         "confirmed_at": None,
         "window": period_window_text(period),
-        **inventory,
     }
 
 
@@ -676,9 +669,6 @@ def check_periodic_report(
         "status",
         "generated_at",
         "window",
-        "source_days",
-        "missing_days",
-        "draft_days",
     ):
         if key not in meta or meta.get(key) in (None, ""):
             problems.append(f"缺少必填字段 {key}")
@@ -705,51 +695,10 @@ def check_periodic_report(
     if status == "draft" and meta.get("confirmed_at"):
         problems.append("draft 状态不应带 confirmed_at")
 
-    inventory_keys = ("source_days", "missing_days", "draft_days")
-    inventory: Dict[str, List[str]] = {}
-    for key in inventory_keys:
-        values = meta.get(key)
-        if not isinstance(values, list):
-            problems.append(f"{key} 必须是列表")
-            continue
-        normalized = [value if isinstance(value, str) else repr(value) for value in values]
-        if len(normalized) != len(set(normalized)):
-            problems.append(f"{key} 不能重复")
-        for value in values:
-            try:
-                parsed = date.fromisoformat(value)
-            except (TypeError, ValueError):
-                problems.append(f"{key} 日期非法：{value}")
-                continue
-            if start and end and not (start <= parsed < end):
-                problems.append(f"{key} 日期不在周期内：{value}")
-        inventory[key] = normalized
-    if len(inventory) == len(inventory_keys) and start and end:
-        combined = [value for key in inventory_keys for value in inventory[key]]
-        if len(combined) != len(set(combined)):
-            problems.append("source_days、missing_days 与 draft_days 不能重叠")
-        if set(combined) != set(_period_days(start, end)):
-            problems.append("日报来源清单必须完整覆盖周期内每个自然日")
-
     if not body.strip() or (body == PERIODIC_SKELETON_BODY and not allow_skeleton):
         problems.append("正文为空")
     if _mode(path) != FILE_MODE:
         problems.append(f"文件权限应为 {oct(FILE_MODE)}，实际 {oct(_mode(path))}")
-    return problems
-
-
-def check_periodic_sources_current(reports_root: Path, path: Path) -> List[str]:
-    """Reject confirmation when a draft's Daily source inventory has drifted."""
-
-    try:
-        meta, _body = read_report(path)
-        current = periodic_source_inventory(reports_root, str(meta.get("period")))
-    except ReportError as exc:
-        return [str(exc)]
-    problems = []
-    for key in ("source_days", "missing_days", "draft_days"):
-        if meta.get(key) != current[key]:
-            problems.append(f"{key} 已变化，请重新生成周期报草稿")
     return problems
 
 
@@ -1039,9 +988,6 @@ def list_periodic_reports(reports_root: Path) -> List[Dict[str, Any]]:
             "status": meta.get("status"),
             "generated_at": meta.get("generated_at"),
             "confirmed_at": meta.get("confirmed_at"),
-            "source_days": len(meta.get("source_days", [])),
-            "missing_days": meta.get("missing_days", []),
-            "draft_days": meta.get("draft_days", []),
             "superseded": len(periodic_superseded_paths(reports_root, period)),
         }
         rows.append(row)

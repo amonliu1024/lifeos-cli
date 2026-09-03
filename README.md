@@ -214,7 +214,7 @@ Activity 使用 `ACT-` 加 24 位 Base32 的稳定短 ID。它仍由来源、会
 
 ## 周期报
 
-周期报正文由 Skill 的 Periodic 分支生成。CLI 负责把周、月、季度、半年和自然年归一成确定窗口，只提供其中已经 confirmed 的日报正文，并保存草稿生成时的来源覆盖。
+周期报正文由 Skill 的 Periodic 分支生成。CLI 负责把周、月、季度、半年和自然年归一成确定窗口，并只提供其中已经 confirmed 的日报正文。周期报本身只保存周期、窗口和草稿/确认状态，不持久化逐日来源清单。
 
 ```bash
 lifeos reports periodic sources --period 2026-W35 --json
@@ -224,7 +224,7 @@ lifeos reports periodic confirm --period 2026-W35
 lifeos reports periodic list --json
 ```
 
-规范周期使用 `YYYY-Www`、`YYYY-MM`、`YYYY-Qn`、`YYYY-Hn` 或 `YYYY`。周按 ISO 周一至周日计算，其他周期按自然日历计算。`sources` 默认每页返回 7 份 confirmed 日报，按 `next_offset` 继续读取，可避免长周期正文被截断；第一页同时返回完整覆盖盘点。缺失日报和仍为 draft 的日报保存在周期报 frontmatter 并在确认时核对；来源状态变化后，旧草稿必须重新生成。周期报当前只保存在 Private Runtime，不进入只读 Web 工作台。
+规范周期使用 `YYYY-Www`、`YYYY-MM`、`YYYY-Qn`、`YYYY-Hn` 或 `YYYY`。周按 ISO 周一至周日计算，其他周期按自然日历计算。`sources` 默认每页返回 7 份 confirmed 日报，按 `next_offset` 继续读取，可避免长周期正文被截断；第一页同时返回当次覆盖盘点，但这些日期只服务生成过程，不进入周期报文件。确认表示本人接受当前草稿正文，不重新核对日报来源。周期报当前只保存在 Private Runtime，不进入只读 Web 工作台。
 
 ## Agent Skill
 

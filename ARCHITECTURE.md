@@ -45,7 +45,7 @@ $LIFEOS_HOME（默认 ~/.local/share/lifeos）
 | DChat 原始 revision 与索引 | DChat Runtime | `lifeos dchat scan` |
 | 日报与周期报 | Reports Runtime | `lifeos reports` 与 Agent Skill |
 
-Reports Runtime 以 `daily/` 保存由本机辅助证据生成的自然日日报，以 `periodic/` 保存只消费 confirmed 日报的周、月、季度、半年和年度报告。两类报告复用同一互斥锁、私有权限、原子替换与 draft/confirmed 状态；周期窗口和来源清单由 CLI 拥有，正文由 Agent Skill 拥有。
+Reports Runtime 以 `daily/` 保存由本机辅助证据生成的自然日日报，以 `periodic/` 保存只消费 confirmed 日报的周、月、季度、半年和年度报告。两类报告复用同一互斥锁、私有权限、原子替换与 draft/confirmed 状态；CLI 拥有周期窗口与状态，Agent Skill 拥有正文。逐日来源覆盖只在生成时由 CLI 计算和返回，不写入周期报。
 
 `lifeos web serve` 是本地读取 adapter，不是新的数据 Owner。它只接受回环地址，浏览器通过同源接口取得一次性投影；打开日报原文时，服务端根据日期从 Reports Runtime 根目录重新推导规范路径，不接受浏览器传入文件路径。静态资源来自仓内固定 package，不提供通用文件服务。周期报暂不投影到 Web。
 

@@ -86,6 +86,11 @@ class ReportsHelpTest(ReportsCLITestCase):
         self.assertNotIn("import", periodic_help)
         self.assertNotIn("read", periodic_help)
 
+        periodic_confirm_help = self.run_cli(
+            "periodic", "confirm", "--help"
+        ).stdout
+        self.assertIn("不重新读取日报", periodic_confirm_help)
+
 
 class BeginTest(ReportsCLITestCase):
     def test_begin_creates_private_skeleton_for_the_natural_day(self):
@@ -842,7 +847,7 @@ class PeriodicReportsTest(ReportsCLITestCase):
         self.assertIsNone(second["next_offset"])
         self.assertNotIn("coverage", second)
 
-    def test_begin_write_confirm_and_list_preserve_source_snapshot(self):
+    def test_begin_write_confirm_and_list_keep_compact_periodic_state(self):
         self.prepare_daily("2026-08-03")
         self.prepare_daily("2026-08-04")
         begun = json.loads(
@@ -865,11 +870,22 @@ class PeriodicReportsTest(ReportsCLITestCase):
         meta, body = store.read_report(self.periodic_report())
         self.assertEqual("confirmed", meta["status"])
         self.assertEqual("week", meta["period_type"])
+        self.assertEqual(
+            {
+                "period",
+                "period_type",
+                "status",
+                "generated_at",
+                "confirmed_at",
+                "window",
+            },
+            set(meta),
+        )
         self.assertIn("跨日变化主线", body)
 
         rows = json.loads(self.run_cli("periodic", "list", "--json").stdout)
         self.assertEqual(1, rows["total"])
-        self.assertEqual(2, rows["reports"][0]["source_days"])
+        self.assertNotIn("source_days", rows["reports"][0])
         self.assertEqual(0, self.run_cli("validate", check=False).returncode)
 
     def test_confirm_rejects_an_unwritten_skeleton(self):
@@ -892,20 +908,21 @@ class PeriodicReportsTest(ReportsCLITestCase):
         self.assertIn("没有已确认日报", result.stderr)
         self.assertFalse(self.periodic_report().exists())
 
-    def test_confirm_rejects_daily_inventory_drift(self):
+    def test_confirm_accepts_the_reviewed_draft_without_rechecking_daily_sources(self):
         self.prepare_daily("2026-08-03")
         self.run_cli("periodic", "begin", "--period", "2026-W32")
         self.write_periodic()
         self.prepare_daily("2026-08-04")
 
-        result = self.run_cli(
-            "periodic", "confirm", "--period", "2026-W32", check=False
+        result = json.loads(
+            self.run_cli(
+                "periodic", "confirm", "--period", "2026-W32", "--json"
+            ).stdout
         )
 
-        self.assertEqual(1, result.returncode)
-        self.assertIn("已变化", result.stderr)
+        self.assertTrue(result["changed"])
         meta, _body = store.read_report(self.periodic_report())
-        self.assertEqual("draft", meta["status"])
+        self.assertEqual("confirmed", meta["status"])
 
     def test_redo_preserves_confirmed_periodic_report(self):
         self.prepare_daily("2026-08-03")
