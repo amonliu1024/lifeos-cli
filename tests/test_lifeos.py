@@ -427,6 +427,35 @@ class PublicInterfaceTest(unittest.TestCase):
                     self.assertIn(phrase, help_text)
 
 class CurrentBriefViewTest(unittest.TestCase):
+    def test_current_brief_shows_only_idea_names(self):
+        output = render_brief(
+            {"work_items": []},
+            {"tasks": []},
+            {
+                "ideas": [
+                    {
+                        "text": "第一条闪念",
+                        "status": "inbox",
+                        "context": "第一条不应展示的上下文",
+                        "created_at": "2026-08-14T10:00:00+08:00",
+                    },
+                    {
+                        "text": "第二条闪念",
+                        "status": "incubating",
+                        "context": "第二条不应展示的上下文",
+                        "created_at": "2026-08-15T10:00:00+08:00",
+                    },
+                ]
+            },
+            "current",
+            reference_date=date(2026, 8, 15),
+        )
+
+        self.assertIn("💡 闪念\n\n- 第二条闪念\n- 第一条闪念", output)
+        self.assertNotIn("不应展示的上下文", output)
+        self.assertNotIn("刚记下", output)
+        self.assertNotIn("酝酿中", output)
+
     def test_current_brief_uses_item_tree_and_time_tags(self):
         output = render_brief(
             {

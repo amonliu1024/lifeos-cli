@@ -23,6 +23,7 @@ self，只显示具名 person / organization；字段缺失或 unknown 不显示
 `lifeos work brief --mode closeout`。两者都是确定性只读视图，Agent 直接转发 CLI
 原生 Markdown，不再自行读取 JSON、重算日期、去重或重排。
 `current` 只展示有可见未完成待办的推进中事项；没有可见待办的事项不展示。同一事项下的可见待办先按 `due_at` 由早到晚排列，逾期越久越靠前；无截止日待办再按最新 `task_started.started_at` 由早到晚排列，没有开始事件的放在最后。`active / waiting` 只决定可见范围，不覆盖时间顺序。`due_at` 过去才是结果逾期。开始推进日期只从 `task_started` 事件派生，里程碑阶段目标使用 `target_at`。`next_action` 中的 `260825开始……` 只按原生文本转发，不解析为日期，也不据此筛选、排序或提醒。
+`current` 的闪念按创建时间倒序排列，只展示名称；状态与上下文不进入当前简报，需要时再查询闪念专属视图。
 筛选只改变记录范围，不改变分组、状态、日期和条目层次。
 只有本人明确要求改变展示方式时，才转换格式。
 

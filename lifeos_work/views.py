@@ -185,6 +185,7 @@ def current_brief_scope(work_items, tasks, reference_date, started_dates=None):
 
 
 def render_current_brief(work_items, tasks, ideas, reference_date, started_dates=None):
+    """Render current work densely, keeping ideas to their names only."""
     started_dates = started_dates or {}
     work_items, tasks = current_brief_scope(
         work_items, tasks, reference_date, started_dates
@@ -265,10 +266,7 @@ def render_current_brief(work_items, tasks, ideas, reference_date, started_dates
             key=lambda value: value.get("created_at", ""),
             reverse=True,
         ):
-            label = "刚记下" if idea.get("status") == "inbox" else "酝酿中"
-            lines.append(f"- {idea['text']} ｜ {label}")
-            if idea.get("context"):
-                lines.append(f"  {idea['context']}")
+            lines.append(f"- {idea['text']}")
         lines.append("")
     return "\n".join(lines).rstrip() + "\n"
 
