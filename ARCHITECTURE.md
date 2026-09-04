@@ -28,7 +28,7 @@ $LIFEOS_HOME（默认 ~/.local/share/lifeos）
 - `lifeos_config` 负责本机私有模块设置和无副作用的能力检查。
 - `lifeos_web` 把现有 Work 与 Reports 读取入口投影为仅回环可达的只读页面；投影不落盘、不缓存，也不拥有任何个人事实。
 
-因此，新增内置模块必须在同一个仓库内同时完成代码、注册、测试和文档；是否在某台机器上启用该模块，则始终是本机私有配置的选择。
+是否在某台机器上启用内置模块，始终是本机私有配置的选择。
 
 ## 数据 Owner
 
@@ -91,7 +91,7 @@ Project Catalog 扫描全部配置根，不跟随符号链接，也不从 Work �
 
 DChat 的 `p2p / extp2p` 私聊全部进入正文采集；`channel / extchannel` 只有 VID 至少由一份当前有效项目清单声明时进入。多个项目声明同一 VID 时只采集一次，索引保留全部项目关联；VID 从全部清单退出只停止后续正文读取，既有不可变 revision 继续保留。
 
-Sessions checkpoint 的 `cache_generation` 由来源 Adapter revision、shared extraction revision 和 Slice Schema 共同决定。来源特有解析变化只提升对应 Adapter revision，共享提取或判断语义变化提升 shared extraction revision；验证重扫是否生效应检查扫描报告的 `files_read` 与 `reused`，不能只依据成功退出码。
+Sessions checkpoint 的 `cache_generation` 由来源 Adapter revision、shared extraction revision 和 Slice Schema 共同决定。来源特有解析变化只提升对应 Adapter revision，共享提取或判断语义变化提升 shared extraction revision。
 
 Pi Adapter 读取 `~/.pi/agent/sessions` 的 v2/v3 树形 JSONL，以原生 user message ID 作为 Turn 身份，通过 `parentId` 归并真实分支事件；compaction、branch summary、扩展注入和 thinking 不进入正文。它与 Codex、Claude、SmartWork、DeepSeek 共用同一 Slice、checkpoint 与清洗接口，不建立 Pi 专用存储。
 
@@ -101,5 +101,3 @@ Pi Adapter 读取 `~/.pi/agent/sessions` 的 v2/v3 树形 JSONL，以原生 user
 - Runtime 与配置默认位于仓库之外，并使用仅属主可访问的权限。
 - 只读能力检查不会创建配置目录或 Runtime 目录。
 - DChat 在显式配置前保持禁用。
-- 测试只使用合成 fixture 和临时 home。
-- 本地实现、提交、推送、发布、部署和目标环境验证是彼此独立的交付状态，不能互相推断。

@@ -39,7 +39,7 @@ LifeOS 的回答是把三样东西分开，并且不让它们互相推导。**�
 
 ### 打开终端，就知道现在该做什么
 
-`lifeos work brief` 是每天用得最多的一屏，只展示会改变当前行动的事实：当前事项停在哪个门槛、哪几条待办真的到期、有什么刚记下还没处理的闪念。当前简报中的闪念只列名称，上下文留在闪念专属视图。另外两种模式服务另外两个时刻，`--mode reminder` 只提醒需要关注的事，`--mode closeout` 用于一天收口。
+`lifeos work brief` 是每天用得最多的一屏，只展示会改变当前行动的事实：当前事项停在哪个门槛、哪几条待办真的到期、有什么刚记下还没处理的闪念。另外两种模式服务另外两个时刻，`--mode reminder` 只提醒需要关注的事，`--mode closeout` 用于一天收口。
 
 ### 其它顺手的地方
 
@@ -128,7 +128,7 @@ Work 对象沿着“项目引用 → 事项 → 里程碑 → 待办”组织，
 - **闪念**承载尚未形成承诺的输入，只有指向本人已确认的事项或待办时才算完成提升。
 - **成果胶囊**保存可复用结果、经验与来源，可以关联已完成待办，但不参与责任、日期和提醒。
 
-责任方必须是真实确认的本人、个人或组织；缺失时保持未知，不从上下文猜测。等待、暂停、取消、关闭、归档和替换按命令契约保留原因，历史审计事件不会为了适配新的当前 Schema 而被改写。普通写入在锁内完成校验、原子替换、审计事件和视图刷新，跨事实源写入前先备份整个 Runtime。精确字段、状态和写入参数以相应命令的 `--help`、代码及测试为准。
+责任方必须是真实确认的本人、个人或组织；缺失时保持未知，不从上下文猜测。状态变化保留原因，历史审计事件不会为了适配新的当前 Schema 而被改写。精确字段、状态和写入参数以相应命令的 `--help`、代码及测试为准，写入安全机制见 [`ARCHITECTURE.md`](ARCHITECTURE.md#安全属性)。
 
 ## 项目关系
 
@@ -204,13 +204,9 @@ lifeos reports begin --day 2026-08-28 --json     # 建立草稿；已确认的�
 lifeos reports write --day 2026-08-28 --body-file /tmp/daily.md
 lifeos reports confirm --day 2026-08-28
 lifeos reports validate
-lifeos reports migrate-activity-ids              # 只读预演旧长 Activity ID 迁移
-lifeos reports migrate-activity-ids --apply      # 备份后只迁移历史日报 ID
 ```
 
 `reports path --json` 是只读状态入口，返回该日在 Asia/Shanghai 的完整自然日窗口；已确认日报需要重新采集证据时直接使用这个窗口，不必覆盖日报。
-
-Activity 使用 `ACT-` 加 24 位 Base32 的稳定短 ID。它仍由来源、会话和 Slice 聚合内容确定；旧版完整 SHA-256 Activity ID 不再被 index、pack 或 reports 接受。升级已有 Runtime 时，先预演再应用 `reports migrate-activity-ids`：命令直接转换旧摘要并检查碰撞，不重新采集会话内容，apply 前会在 Runtime `backups/` 中保存完整 Reports 备份。
 
 ## 周期报
 
@@ -224,49 +220,19 @@ lifeos reports periodic confirm --period 2026-W35
 lifeos reports periodic list --json
 ```
 
-规范周期使用 `YYYY-Www`、`YYYY-MM`、`YYYY-Qn`、`YYYY-Hn` 或 `YYYY`。周按 ISO 周一至周日计算，其他周期按自然日历计算。`sources` 默认每页返回 7 份 confirmed 日报，按 `next_offset` 继续读取，可避免长周期正文被截断；第一页同时返回当次覆盖盘点，但这些日期只服务生成过程，不进入周期报文件。确认表示本人接受当前草稿正文，不重新核对日报来源。周期报当前只保存在 Private Runtime，不进入只读 Web 工作台。
+规范周期使用 `YYYY-Www`、`YYYY-MM`、`YYYY-Qn`、`YYYY-Hn` 或 `YYYY`。确认表示本人接受当前草稿正文；周期报当前只保存在 Private Runtime，不进入只读 Web 工作台。分页读取等参数以相应命令的 `--help` 为准。
 
 ## Agent Skill
 
-[`skills/lifeos/`](skills/lifeos/) 是由仓库维护的通用 Skill：Agent 先探测本机能力，再判断请求属于项目、Work、日报还是周期报，只加载该分支需要的说明。CLI 版本、制品、SmartWork / cc-switch 同步与回滚统一按 [`DEPLOYMENT.md`](DEPLOYMENT.md) 执行；个人偏好不会写回仓库 Skill，同步动作也不能推导出真实 Runtime 已切换。
+[`skills/lifeos/`](skills/lifeos/) 是通用 LifeOS Skill 的唯一源码，Agent 通过它调用公共 CLI。安装、同步和恢复见 [`DEPLOYMENT.md`](DEPLOYMENT.md)。
 
 ## 配置与数据边界
 
 私有配置默认位于 `~/.config/lifeos/config.json`，可用 `LIFEOS_CONFIG` 指向其他位置；目录和文件分别以 `0700`、`0600` 权限创建。
 
-```json
-{
-  "schema_version": 1,
-  "timezone": "Asia/Shanghai",
-  "modules": {
-    "dchat": {
-      "enabled": false,
-      "dws_wrapper": null
-    },
-    "sessions": {
-      "sources": ["codex", "claude", "smartwork", "deepseek", "pi"]
-    },
-    "project_sources": {
-      "enabled": ["dchat", "cooper"]
-    },
-    "projects": {
-      "roots": [],
-      "exclude": [".git", ".venv", "archive", "node_modules"]
-    }
-  }
-}
-```
-
 模块和来源适配器来自经过代码审查的静态注册表。配置只能启用或停用内置能力，不能要求 LifeOS 从配置中导入任意 Python 模块，也不接受凭据字段。
 
-| 能力 | 默认状态 | 就绪条件 |
-| --- | --- | --- |
-| Work、Reports | 启用 | 内置能力 |
-| Project Catalog | 未配置 | 至少一个可读的项目发现根 |
-| Git 证据 | 启用 | 本机可使用 `git` |
-| Sessions 来源 | 启用 | 已配置的来源目录存在 |
-| DChat 证据 | 禁用 | 已启用，并配置存在的本地 wrapper；群聊范围来自项目清单 |
-| 项目清单中的 DChat / Cooper 来源 | 启用 | 内置 Schema 1 适配器 |
+当前能力及其就绪条件由 `lifeos capabilities` 直接返回，不在 README 维护第二份状态表。
 
 启用 DChat 不需要手工编辑 JSON，该命令只写入 Git 外的私有配置，证据仍保存在 `$LIFEOS_HOME/dchat/`：
 
@@ -292,8 +258,6 @@ $LIFEOS_HOME/
 ```
 
 仓库不会创建或管理可选的 `agent-profile.md`。通用 Skill 可以读取其中的称呼和输出偏好，但该文件不能授予写入或外部操作权限。
-
-所有公开 JSON 合同和持久化数据从 Schema 1 开始（项目跟踪事实源使用 Schema 2，通过 `lifeos work migrate-project-catalog` 从已发布的项目 Schema 1 原子迁移）。公开前的数据不读取、不迁移、不覆盖；切换真实个人 Runtime 是独立的数据操作，不由安装、提交或 Tag 自动完成。
 
 ## 开发与验证
 
