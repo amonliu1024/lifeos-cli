@@ -80,7 +80,9 @@ def current_brief_task_suffix(task, reference_date, started_at=None):
     )
     parts = []
     if party:
-        parts.append(f"👥 {party}")
+        party_kind = (task.get("responsible_party") or {}).get("kind")
+        party_icon = "👤" if party_kind == "person" else "👥"
+        parts.append(f"{party_icon} {party}")
     if task.get("status") == "waiting":
         parts.append("待当前节点完成")
     else:

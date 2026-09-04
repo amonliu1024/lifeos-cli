@@ -456,6 +456,61 @@ class CurrentBriefViewTest(unittest.TestCase):
         self.assertNotIn("刚记下", output)
         self.assertNotIn("酝酿中", output)
 
+    def test_current_brief_uses_person_and_organization_owner_icons(self):
+        output = render_brief(
+            {
+                "work_items": [
+                    {
+                        "id": "WI-OWNER-ICONS",
+                        "title": "责任方图标",
+                        "state": "active",
+                        "next_gate": "核对责任方展示",
+                        "milestones": [],
+                    }
+                ]
+            },
+            {
+                "tasks": [
+                    {
+                        "id": "TASK-PERSON",
+                        "outcome": "个人负责待办",
+                        "work_item_id": "WI-OWNER-ICONS",
+                        "status": "active",
+                        "responsible_party": {"kind": "person", "name": "Ella"},
+                        "due_at": None,
+                        "next_action": None,
+                    },
+                    {
+                        "id": "TASK-ORGANIZATION",
+                        "outcome": "组织负责待办",
+                        "work_item_id": "WI-OWNER-ICONS",
+                        "status": "active",
+                        "responsible_party": {"kind": "organization", "name": "ERP"},
+                        "due_at": None,
+                        "next_action": None,
+                    },
+                    {
+                        "id": "TASK-SELF",
+                        "outcome": "本人负责待办",
+                        "work_item_id": "WI-OWNER-ICONS",
+                        "status": "active",
+                        "responsible_party": {"kind": "self", "name": "我"},
+                        "due_at": None,
+                        "next_action": None,
+                    },
+                ]
+            },
+            {"ideas": []},
+            "current",
+            reference_date=date(2026, 8, 15),
+        )
+
+        self.assertIn("个人负责待办 | 👤 Ella", output)
+        self.assertIn("组织负责待办 | 👥 ERP", output)
+        self.assertIn("本人负责待办", output)
+        self.assertNotIn("本人负责待办 | 👤", output)
+        self.assertNotIn("本人负责待办 | 👥", output)
+
     def test_current_brief_uses_item_tree_and_time_tags(self):
         output = render_brief(
             {
@@ -963,7 +1018,7 @@ class ScheduledBriefViewTest(unittest.TestCase):
         self.assertIn("- 【推进事项】 · 推进中", output)
         self.assertIn("    - 当前节点 A", output)
         self.assertIn(
-            "    - 直接下一节点 B | 👥 伙伴 · 待当前节点完成",
+            "    - 直接下一节点 B | 👤 伙伴 · 待当前节点完成",
             output,
         )
         self.assertIn("🧩 独立待办\n\n- 近期独立待办", output)
