@@ -1,7 +1,7 @@
 #!/usr/bin/env python3
 """LifeOS CLI public entry point."""
 
-from lifeos_work.cli import main
+from lifeos_modules import main
 
 
 VERSION = "1.2.0"

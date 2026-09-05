@@ -1,14 +1,14 @@
-"""Argparse composition root for the LifeOS Work CLI.
+"""Argparse registration for the LifeOS Work domain.
 
 Domain behavior lives in ``commands`` modules; Runtime initialization and
-maintenance remain owned by the Runtime module.
+maintenance remain owned by the Runtime module. The CLI composition root is
+``lifeos_modules``.
 """
 
 import argparse
 
 from .config import (
     ACHIEVEMENT_LIFECYCLES,
-    DATA_DIR,
     ENTITY_KINDS,
     IDEA_STATUSES,
     MILESTONE_DECISIONS,
@@ -70,55 +70,6 @@ from .commands.work_items import (
     command_work_items,
 )
 
-
-ROOT_DESCRIPTION = "人生 OS / LifeOS CLI：管理个人工作事实、Agent 会话、本地协作证据与报告状态。"
-ROOT_EPILOG = """领域边界：
-  project  校验项目工作区的 lifeos-project.json；不写 Private Runtime。
-  work     个人工作事实（项目引用、事项、待办、闪念、成果胶囊）；查询与写入都在此域。
-  sessions 只读 Agent 应用来源，维护私有派生索引；不写来源日志、Work 或日报。
-  git      只读本地 Git 提交，维护日报辅助证据快照；不修改仓库、remote、Work 或日报正文。
-  dchat    只读 p2p / extp2p 私聊与项目清单群聊，维护私有原始证据；不发送消息、修改 DChat 或写 Work。
-  reports  日报与周期报的结构和状态；正文由 lifeos Skill 的对应分支维护。
-  web      只读本地工作台；只监听回环地址，不写 Work、日报或其它 Runtime。
-
-所有时间窗口使用半开区间 [from, to)；具体参数、默认值和写入边界以对应子命令 --help 为准。"""
-
-HOME_LOGO_LINES = (
-    "⢀⣠⠀⠀⠀⡀",
-    "⣰⢫⢖⣫⣝⡂⠙⣆",
-    "⡇⣏⢾⠀⠀⡷⠀⢸",
-    "⠹⣜⠦⣄⣠⠴⣣⠏",
-    "⠈⠙⠒⠒⠋⠁",
-)
-
-HOME_TEMPLATE = """{brand}
-
-以数据，照见人生。
-让行动有迹，让经历成知。
-
-常用命令
-  lifeos work brief --mode current   查看当前工作简报
-  lifeos work tasks                  查看待办
-  lifeos work show TASK-ID           查看一条待办的完整记录
-  lifeos work task-add --help        新增待办
-  lifeos work task-close --help      完成待办并记录完成依据
-  lifeos work idea-add --help        记下一条闪念
-  lifeos project discover            发现项目工作区
-  lifeos capabilities                检查本机可用能力
-
-开始使用
-  lifeos --help                      查看所有领域
-  lifeos <领域> --help                查看领域内的命令
-"""
-
-
-def render_home(version):
-    """Render the compact terminal adaptation of the LifeOS brand mark."""
-
-    brand_lines = (*HOME_LOGO_LINES, "LifeOS", f"v{version}")
-    brand_width = max(len(line) for line in brand_lines)
-    brand = "\n".join(line.center(brand_width).rstrip() for line in brand_lines)
-    return HOME_TEMPLATE.format(brand=brand)
 
 WORK_DESCRIPTION = """管理 LifeOS 的个人工作事实：项目引用、事项、里程碑、待办、闪念、实体名词和成果胶囊。
 
@@ -620,16 +571,8 @@ def _annotate_work_parsers(commands):
             action.help = COMMAND_SUMMARIES[action.dest]
 
 
-def build_parser(version):
-    parser = argparse.ArgumentParser(
-        prog="lifeos",
-        description=ROOT_DESCRIPTION,
-        epilog=ROOT_EPILOG,
-        formatter_class=argparse.RawDescriptionHelpFormatter,
-    )
-    parser.add_argument("--version", action="version", version=f"LifeOS v{version}")
-    domains = parser.add_subparsers(dest="domain")
-    from lifeos_modules import register_command_modules
+def register_work_parser(domains):
+    """Register the ``work`` domain parser and all of its command handlers."""
 
     work = domains.add_parser(
         "work",
@@ -1073,14 +1016,3 @@ def build_parser(version):
     command.set_defaults(handler=command_validate)
 
     _annotate_work_parsers(commands)
-    register_command_modules(domains, DATA_DIR)
-    return parser
-
-
-def main(version):
-    parser = build_parser(version)
-    args = parser.parse_args()
-    if args.domain is None:
-        print(render_home(version))
-        return
-    args.handler(args)

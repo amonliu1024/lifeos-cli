@@ -17,7 +17,7 @@ $LIFEOS_HOME（默认 ~/.local/share/lifeos）
 
 ## 能力组合
 
-`lifeos_work.cli` 是命令组合根，`lifeos_modules.COMMAND_MODULES` 是顶层命令模块的静态注册表。静态注册让代码审查、打包和安全边界保持可见；配置不能指定导入路径，也不能加载任意代码。
+`lifeos_modules` 是命令组合根：持有根 parser、home 屏与 `main`，所有命令域（含 Work）都通过 `COMMAND_MODULES` 静态注册表平级挂载；`lifeos.py` 只是带版本号的公开入口。静态注册让代码审查、打包和安全边界保持可见；配置不能指定导入路径，也不能加载任意代码。
 
 可选能力在下一层使用相同模式：
 
