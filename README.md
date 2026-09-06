@@ -87,6 +87,12 @@ Sessions、Git、DChat 三类证据全部只读来源、只写私有快照，既
 
 [`skills/lifeos/`](skills/lifeos/) 是通用 LifeOS Skill 的唯一源码，Agent 通过它调用公共 CLI。安装、同步和恢复见 [DEPLOYMENT.md](DEPLOYMENT.md)。
 
+## 架构与技术栈
+
+纯 Python（3.9+），不依赖任何第三方包。命令层是唯一写入口，Work 事实、审计事件与派生视图共用一条链路：互斥锁、校验、临时文件、原子替换、幂等检查、审计追加和视图刷新属于同一次写入，不允许只完成一半。
+
+数据分三处且方向单向：项目静态身份在各项目根的 `lifeos-project.json`，个人 Work 事实与报告在 `~/.local/share/lifeos/`，本机开关与来源路径在 `~/.config/lifeos/`。Sessions、Git、DChat 三类证据只读来源、只写私有快照，不回写 Work。模块划分与安全属性见 [ARCHITECTURE.md](ARCHITECTURE.md)。
+
 ## 配置与数据边界
 
 私有配置位于 Git 外 `~/.config/lifeos/config.json`（可用 `LIFEOS_CONFIG` 指向其他位置），个人工作事实与派生证据位于 `$LIFEOS_HOME`（默认 `~/.local/share/lifeos/`），两者均以 0700/0600 权限创建，不进入任何 Git 工作树。模块和来源适配器来自经过代码审查的静态注册表，配置只能启停内置能力，不接受凭据字段；当前能力及其就绪条件由 `lifeos capabilities` 直接返回。启用 DChat 用 `lifeos dchat configure` 写入 Git 外私有配置，不需要手工编辑 JSON。
