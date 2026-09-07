@@ -1,0 +1,9 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="-56 -56 112 112">
+  <title>LifeOS</title>
+  <rect x="-56" y="-56" width="112" height="112" rx="24" fill="#f3f4f5"/>
+  <g fill="none" stroke="#15181B" stroke-width="6.5" stroke-linecap="round">
+    <circle r="46" stroke-dasharray="254 35" transform="rotate(-58)"/>
+    <circle r="33" stroke-dasharray="156 51" transform="rotate(28)"/>
+    <circle r="20" stroke-dasharray="84 42" transform="rotate(148)"/>
+  </g>
+</svg>

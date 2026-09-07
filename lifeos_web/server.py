@@ -29,6 +29,7 @@ STATIC_FILES = {
     "/assets/app.css": ("app.css", "text/css; charset=utf-8"),
     "/assets/app.js": ("app.js", "text/javascript; charset=utf-8"),
     "/assets/lifeos-logo.svg": ("lifeos-logo.svg", "image/svg+xml"),
+    "/assets/favicon.svg": ("favicon.svg", "image/svg+xml"),
     "/assets/fonts/Geist-Regular.ttf": ("fonts/Geist-Regular.ttf", "font/ttf"),
     "/assets/fonts/Geist-SemiBold.ttf": ("fonts/Geist-SemiBold.ttf", "font/ttf"),
     "/assets/fonts/GeistMono-Regular.ttf": ("fonts/GeistMono-Regular.ttf", "font/ttf"),
