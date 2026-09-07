@@ -5,7 +5,7 @@ description: 读取或更新 LifeOS 私有工作账本，数字化项目清单�
 
 # LifeOS
 
-通过唯一 Agent Skill 使用 LifeOS。先探测本机能力，再判断请求属于 Project、Work、Daily、Periodic，还是 Daily 中经用户另行授权的 Work 写入，并只加载该分支需要的 reference。
+通过唯一 Agent Skill 使用 LifeOS。先探测本机能力，再判断请求属于 Project、Work、Daily 还是 Periodic，并只加载该分支需要的 reference。
 
 ## 固定入口与边界
 
@@ -24,9 +24,9 @@ Runtime authority 默认位于 `~/.local/share/lifeos/`，私人配置位于 `~/
 | 为一个项目创建、补充或校验 LifeOS 数字化清单 | 读取 [`references/project.md`](references/project.md)，进入 Project 分支 |
 | 查询工作账本、提醒、历史、成果或实体关系 | 读取 [`references/work.md`](references/work.md)，进入 Work 读取分支 |
 | 明确创建或变更待办、事项、闪念及其他 Work 事实 | 读取 [`references/work.md`](references/work.md) 和 [`references/work-model.md`](references/work-model.md)，进入 Work 写入分支 |
+| 盘点工作区关注标记或处理 CURRENT 联动候选 | 读取 [`references/work.md`](references/work.md) 的「项目关注联动候选」一节，候选经本人确认后按 Work 写入分支执行 |
 | 生成、补写、重做、确认日报，或回答某个自然日做了什么 | 读取 [`references/daily.md`](references/daily.md)；读取会话正文或填写证据计数前，再读取 [`references/session-evidence.md`](references/session-evidence.md) |
 | 生成、补写、重做、确认周报、月报、季度报、半年报或年报 | 读取 [`references/periodic.md`](references/periodic.md)，只消费对应周期内的 confirmed 日报 |
-| Daily 产生候选且本人另行明确要求写入 Work | 保留 Daily 上下文，再读取 Work 两份 reference，按 Work create-only 分支执行并回收 ID |
 
 请求同时包含多个分支时按依赖顺序执行：Project 先提供静态身份和入口并确认 Catalog 可发现；Work 再按 `project_key` 建立或维护个人跟踪；Daily 先形成候选，只有本人对具体候选另行授权后才进入 Work；Periodic 只在 Daily 已确认后消费其正文。确认项目清单、确认日报、确认周期报、确认“要做”和授权写入 Work 是不同动作，不互相推导。
 
