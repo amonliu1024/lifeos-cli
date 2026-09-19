@@ -32,8 +32,6 @@ STATIC_FILES = {
     "/assets/favicon.svg": ("favicon.svg", "image/svg+xml"),
     "/assets/fonts/Geist-Regular.ttf": ("fonts/Geist-Regular.ttf", "font/ttf"),
     "/assets/fonts/Geist-SemiBold.ttf": ("fonts/Geist-SemiBold.ttf", "font/ttf"),
-    "/assets/fonts/GeistMono-Regular.ttf": ("fonts/GeistMono-Regular.ttf", "font/ttf"),
-    "/assets/fonts/GeistMono-Medium.ttf": ("fonts/GeistMono-Medium.ttf", "font/ttf"),
 }
 
 
