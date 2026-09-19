@@ -297,14 +297,15 @@ h1, h2, h3, p { margin-top: 0; }
 .next-gate {
   display: flex;
   min-width: 0;
+  align-items: flex-start;
   gap: var(--space-2);
   margin: 0;
   color: var(--muted);
   font-size: var(--text-meta);
   line-height: var(--line-meta);
 }
-.next-gate strong { flex: 0 0 auto; color: var(--muted); font-weight: var(--weight-control); }
-.next-gate span { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.next-gate strong { display: inline-flex; flex: 0 0 auto; align-items: center; gap: var(--space-1); color: var(--faint); font-weight: var(--weight-body); }
+.next-gate span { overflow: hidden; font-weight: var(--weight-control); text-overflow: ellipsis; white-space: nowrap; }
 
 .id-label {
   color: var(--faint);
@@ -388,7 +389,7 @@ h1, h2, h3, p { margin-top: 0; }
 .task-line.is-terminal .task-dot { background: var(--muted); border-color: var(--muted); }
 .task-line.is-terminal .task-outcome { color: var(--muted); text-decoration: line-through; }
 .task-outcome { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
-.task-line .task-outcome { flex: 0 1 auto; min-width: 0; }
+.task-line .task-outcome { flex: 0 1 auto; min-width: 0; font-weight: var(--weight-control); }
 .task-line .state-label, .task-line .due-chip, .task-line .completion-chip { flex: 0 0 auto; }
 
 .due-chip {

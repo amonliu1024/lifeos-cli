@@ -121,6 +121,7 @@ function dueIcon(kind) {
     urgent: `<path d="M8 2.5a5.5 5.5 0 1 0 4.7 2.65"></path><path d="M8 5v3.25l2.25 1.25"></path><path d="M10.75 2.25h2.5v2.5"></path>`,
     overdue: `<circle cx="8" cy="8" r="5.5"></circle><path d="M8 4.75v4"></path><path d="M8 11.25h.01"></path>`,
     done: `<circle cx="8" cy="8" r="5.5"></circle><path d="m5.25 8 1.8 1.8 3.7-3.7"></path>`,
+    gate: `<path d="M4 13.5V2.75"></path><path d="M4 3h7.5l-1.75 2.75L11.5 8.5H4"></path>`,
   }[kind] || "";
   return `<svg class="due-icon" viewBox="0 0 16 16" fill="none" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true" focusable="false">${body}</svg>`;
 }
@@ -222,7 +223,7 @@ function renderWork() {
           <span class="id-label">${esc(item.id)}</span>
         </div>
         <div class="work-subline">
-          <p class="next-gate"><strong>下一门槛</strong><span>${esc(action)}</span></p>
+          <p class="next-gate"><strong>${dueIcon("gate")}下一门槛</strong><span>${esc(action)}</span></p>
           ${status(item.state)}
         </div>
       </button>
