@@ -87,6 +87,7 @@ def _achievement_projection(achievement: dict[str, Any]) -> dict[str, Any]:
             if isinstance(link, dict)
         ],
         "lifecycle": achievement.get("lifecycle"),
+        "created_at": achievement.get("created_at"),
         "updated_at": achievement.get("updated_at"),
     }
 

@@ -232,8 +232,7 @@ function renderWork() {
   }).join("");
 
   const standaloneCards = standalone.length ? `<p class="standalone-label">Unbound / 独立</p>${standalone.map((task) => `<button class="standalone-card ${task.terminal ? "is-terminal" : ""}" id="locate-${esc(task.id)}" data-open-kind="task" data-open-id="${esc(task.id)}">
-    <span class="task-dot" aria-hidden="true"></span>
-    <span class="task-outcome">${text(task.outcome)}</span>
+    <span class="card-sheet"><span class="task-dot" aria-hidden="true"></span><span class="task-outcome">${text(task.outcome)}</span></span>
     ${completed ? `<span class="id-label">${esc(task.id)}</span>` : status(task.status)}
     ${task.status === "completed" ? completionChip(task) : dueChip(task.due_at, false, true)}
   </button>`).join("")}` : "";
@@ -319,7 +318,7 @@ function renderIdeas() {
   };
   const ideas = state.snapshot.ideas.filter((idea) => modes[state.ideaMode].includes(idea.status));
   const cards = ideas.map((idea) => `<button class="idea-card" data-open-kind="idea" data-open-id="${esc(idea.id)}">
-    <span class="card-heading">${text(idea.text)}</span><span class="card-description">${text(idea.context, "尚未补充上下文")}</span>
+    <span class="card-sheet"><span class="card-heading">${text(idea.text)}</span><span class="card-description">${text(idea.context, "尚未补充上下文")}</span></span>
     <span class="idea-meta">${status(idea.status)}<span class="date-label">${esc(formatMoment(idea.updated_at))}</span></span>
   </button>`).join("");
   app.innerHTML = `${viewHeading("IDEAS / SIGNAL")}
@@ -329,14 +328,14 @@ function renderIdeas() {
 
 function renderAchievements() {
   const achievements = state.snapshot.achievements.filter((item) => state.achievementMode === "current" ? item.lifecycle === "current" : item.lifecycle !== "current");
-  const cards = achievements.map((item) => `<button class="capsule-card" data-open-kind="achievement" data-open-id="${esc(item.id)}">
-    <span class="capsule-body">
-      <span class="capsule-copy"><span class="card-heading">${text(item.title)}</span><span class="card-description">${text(item.outcome)}</span></span>
-    </span>
+  const cards = achievements.map((item) => `<button class="achievement-card" data-open-kind="achievement" data-open-id="${esc(item.id)}">
+    <span class="card-sheet"><span class="achievement-topline"><span class="card-heading">${text(item.title)}</span><span class="id-label">${esc(item.id)}</span></span>
+    <span class="card-description">${text(item.outcome)}</span></span>
+    <span class="achievement-meta"><span class="seal-tag"><span>封存</span><span>${text(item.created_at?.slice(0, 10))}</span></span><span class="achievement-reuse">复用 · ${text(item.reuse)}</span></span>
   </button>`).join("");
   app.innerHTML = `${viewHeading("CAPSULES / REUSE")}
     ${segmented("achievements", state.achievementMode, [["current", "当前"], ["history", "历史"]])}
-    ${achievements.length ? `<section class="capsule-grid">${cards}</section>` : emptyState("这个视图还没有成果胶囊。")}`;
+    ${achievements.length ? `<section class="card-grid">${cards}</section>` : emptyState("这个视图还没有成果胶囊。")}`;
 }
 
 function render() {
