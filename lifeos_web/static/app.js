@@ -64,9 +64,8 @@ function formatMoment(value) {
   if (!value) return "未记录";
   const date = new Date(value);
   if (Number.isNaN(date.getTime())) return esc(value);
-  return new Intl.DateTimeFormat("zh-CN", {
-    month: "2-digit", day: "2-digit", hour: "2-digit", minute: "2-digit",
-  }).format(date);
+  const pad = (number) => String(number).padStart(2, "0");
+  return `${date.getFullYear()}-${pad(date.getMonth() + 1)}-${pad(date.getDate())} ${pad(date.getHours())}:${pad(date.getMinutes())}`;
 }
 
 function stateClass(value) {
@@ -232,9 +231,8 @@ function renderWork() {
   }).join("");
 
   const standaloneCards = standalone.length ? `<p class="standalone-label">Unbound / 独立</p>${standalone.map((task) => `<button class="standalone-card ${task.terminal ? "is-terminal" : ""}" id="locate-${esc(task.id)}" data-open-kind="task" data-open-id="${esc(task.id)}">
-    <span class="card-sheet"><span class="task-dot" aria-hidden="true"></span><span class="task-outcome">${text(task.outcome)}</span></span>
-    <span class="standalone-meta">${completed ? `<span class="id-label">${esc(task.id)}</span>` : status(task.status)}
-    ${task.status === "completed" ? completionChip(task) : dueChip(task.due_at, false, true)}</span>
+    <span class="card-sheet"><span class="task-dot" aria-hidden="true"></span><span class="task-outcome">${text(task.outcome)}</span><span class="id-label">${esc(task.id)}</span></span>
+    <span class="standalone-meta">${task.status === "completed" ? completionChip(task) : dueChip(task.due_at, false, true)}</span>
   </button>`).join("")}` : "";
 
   app.innerHTML = `${viewHeading("WORK / FOCUS")}
@@ -319,7 +317,7 @@ function renderIdeas() {
   const ideas = state.snapshot.ideas.filter((idea) => modes[state.ideaMode].includes(idea.status));
   const cards = ideas.map((idea) => `<button class="idea-card" data-open-kind="idea" data-open-id="${esc(idea.id)}">
     <span class="card-sheet"><span class="card-heading">${text(idea.text)}</span><span class="card-description">${text(idea.context, "尚未补充上下文")}</span></span>
-    <span class="idea-meta">${status(idea.status)}<span class="date-label">${esc(formatMoment(idea.updated_at))}</span></span>
+    <span class="idea-meta"><span class="date-label">${esc(formatMoment(idea.updated_at))}</span></span>
   </button>`).join("");
   app.innerHTML = `${viewHeading("IDEAS / SIGNAL")}
     ${segmented("ideas", state.ideaMode, [["current", "当前"], ["promoted", "已提升"], ["archived", "已归档"]])}
@@ -330,7 +328,7 @@ function renderAchievements() {
   const achievements = state.snapshot.achievements.filter((item) => state.achievementMode === "current" ? item.lifecycle === "current" : item.lifecycle !== "current");
   const cards = achievements.map((item) => `<button class="achievement-card" data-open-kind="achievement" data-open-id="${esc(item.id)}">
     <span class="card-sheet"><span class="card-heading">${text(item.title)}</span><span class="card-description">${text(item.outcome)}</span></span>
-    <span class="achievement-meta"><span class="seal-tag"><span>封存</span><span>${text(item.created_at?.slice(0, 10))}</span></span></span>
+    <span class="achievement-meta"><span class="date-label">${esc(formatMoment(item.created_at))}</span></span>
   </button>`).join("");
   app.innerHTML = `${viewHeading("CAPSULES / REUSE")}
     ${segmented("achievements", state.achievementMode, [["current", "当前"], ["history", "历史"]])}
