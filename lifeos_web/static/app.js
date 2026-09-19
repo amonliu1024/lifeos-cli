@@ -233,8 +233,8 @@ function renderWork() {
 
   const standaloneCards = standalone.length ? `<p class="standalone-label">Unbound / 独立</p>${standalone.map((task) => `<button class="standalone-card ${task.terminal ? "is-terminal" : ""}" id="locate-${esc(task.id)}" data-open-kind="task" data-open-id="${esc(task.id)}">
     <span class="card-sheet"><span class="task-dot" aria-hidden="true"></span><span class="task-outcome">${text(task.outcome)}</span></span>
-    ${completed ? `<span class="id-label">${esc(task.id)}</span>` : status(task.status)}
-    ${task.status === "completed" ? completionChip(task) : dueChip(task.due_at, false, true)}
+    <span class="standalone-meta">${completed ? `<span class="id-label">${esc(task.id)}</span>` : status(task.status)}
+    ${task.status === "completed" ? completionChip(task) : dueChip(task.due_at, false, true)}</span>
   </button>`).join("")}` : "";
 
   app.innerHTML = `${viewHeading("WORK / FOCUS")}
@@ -329,9 +329,8 @@ function renderIdeas() {
 function renderAchievements() {
   const achievements = state.snapshot.achievements.filter((item) => state.achievementMode === "current" ? item.lifecycle === "current" : item.lifecycle !== "current");
   const cards = achievements.map((item) => `<button class="achievement-card" data-open-kind="achievement" data-open-id="${esc(item.id)}">
-    <span class="card-sheet"><span class="achievement-topline"><span class="card-heading">${text(item.title)}</span><span class="id-label">${esc(item.id)}</span></span>
-    <span class="card-description">${text(item.outcome)}</span></span>
-    <span class="achievement-meta"><span class="seal-tag"><span>封存</span><span>${text(item.created_at?.slice(0, 10))}</span></span><span class="achievement-reuse">复用 · ${text(item.reuse)}</span></span>
+    <span class="card-sheet"><span class="card-heading">${text(item.title)}</span><span class="card-description">${text(item.outcome)}</span></span>
+    <span class="achievement-meta"><span class="seal-tag"><span>封存</span><span>${text(item.created_at?.slice(0, 10))}</span></span></span>
   </button>`).join("");
   app.innerHTML = `${viewHeading("CAPSULES / REUSE")}
     ${segmented("achievements", state.achievementMode, [["current", "当前"], ["history", "历史"]])}
