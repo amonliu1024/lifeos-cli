@@ -99,9 +99,10 @@ function setTab(tab) {
   render();
 }
 
-function viewHeading(kicker) {
+function viewHeading(kicker, count, controls = "") {
   return `<header class="view-heading">
-    <p class="eyebrow">${esc(kicker)}</p>
+    ${controls}
+    <p class="running-head"><span class="running-title">${esc(kicker)}</span><span class="running-count">${String(count).padStart(2, "0")}</span></p>
   </header>`;
 }
 
@@ -201,6 +202,7 @@ function renderWork() {
     completed ? task.status === "completed" : task.status === "active"
   ));
   const count = items.length + standalone.length;
+  const taskCount = items.reduce((sum, item) => sum + item.visibleTasks.length, standalone.length);
 
   const cards = items.map((item) => {
     const project = item.project?.name ? `<span class="project-name">${esc(item.project.name)}</span>` : "";
@@ -236,8 +238,7 @@ function renderWork() {
     <span class="standalone-meta">${task.status === "completed" ? completionChip(task) : dueChip(task.due_at, false, true)}</span>
   </button>`).join("")}` : "";
 
-  app.innerHTML = `${viewHeading("WORK / FOCUS")}
-    ${segmented("work", state.workMode, [["current", "当前"], ["completed", "已完成"], ["all", "全部事项"]])}
+  app.innerHTML = `${viewHeading("WORK / FOCUS", taskCount, segmented("work", state.workMode, [["current", "当前"], ["completed", "已完成"], ["all", "全部事项"]]))}
     ${count ? `<section class="work-list">${cards}${standaloneCards}</section>` : emptyState(completed ? "还没有完成记录。" : "现在没有需要展示的工作。")}`;
 }
 
@@ -297,7 +298,7 @@ function markdown(value) {
 function renderDaily() {
   const reports = state.snapshot.reports;
   if (!reports.length) {
-    app.innerHTML = `${viewHeading("DAILY / LOG")}${emptyState("还没有可展示的日报。")}`;
+    app.innerHTML = `${viewHeading("DAILY / LOG", 0)}${emptyState("还没有可展示的日报。")}`;
     return;
   }
   const report = state.report;
@@ -305,7 +306,7 @@ function renderDaily() {
     <header class="report-header"><div><h2 class="report-date">${esc(report.day)}</h2><div class="report-meta">${status(report.status)}<span>${esc(report.counts.activities)} activities</span><span>·</span><span>${esc(report.counts.work_events)} work events</span></div></div><button class="open-source" data-action="open-report">打开原文 ↗</button></header>
     <div class="report-body">${markdown(report.body)}</div>
   </article>` : `<article class="report-paper report-skeleton" aria-label="正在读取日报"><span class="skeleton skeleton-report-date"></span><span class="skeleton skeleton-report-line"></span><span class="skeleton skeleton-report-line is-short"></span><span class="skeleton skeleton-report-line"></span></article>`;
-  app.innerHTML = `${viewHeading("DAILY / LOG")}
+  app.innerHTML = `${viewHeading("DAILY / LOG", reports.length)}
     <section class="daily-layout">${calendarMarkup()}${paper}</section>`;
 }
 
@@ -320,8 +321,7 @@ function renderIdeas() {
     <span class="card-sheet"><span class="card-heading">${text(idea.text)}</span><span class="card-description">${text(idea.context, "尚未补充上下文")}</span></span>
     <span class="idea-meta"><span class="date-label">${esc(formatMoment(idea.updated_at))}</span></span>
   </button>`).join("");
-  app.innerHTML = `${viewHeading("IDEAS / SIGNAL")}
-    ${segmented("ideas", state.ideaMode, [["current", "当前"], ["promoted", "已提升"], ["archived", "已归档"]])}
+  app.innerHTML = `${viewHeading("IDEAS / SIGNAL", ideas.length, segmented("ideas", state.ideaMode, [["current", "当前"], ["promoted", "已提升"], ["archived", "已归档"]]))}
     ${ideas.length ? `<section class="card-grid">${cards}</section>` : emptyState("这个视图还没有闪念。")}`;
 }
 
@@ -331,8 +331,7 @@ function renderAchievements() {
     <span class="card-sheet"><span class="card-heading">${text(item.title)}</span><span class="card-description">${text(item.outcome)}</span></span>
     <span class="achievement-meta"><span class="date-label">${esc(formatMoment(item.created_at))}</span></span>
   </button>`).join("");
-  app.innerHTML = `${viewHeading("CAPSULES / REUSE")}
-    ${segmented("achievements", state.achievementMode, [["current", "当前"], ["history", "历史"]])}
+  app.innerHTML = `${viewHeading("CAPSULES / REUSE", achievements.length, segmented("achievements", state.achievementMode, [["current", "当前"], ["history", "历史"]]))}
     ${achievements.length ? `<section class="card-grid">${cards}</section>` : emptyState("这个视图还没有成果胶囊。")}`;
 }
 
@@ -519,7 +518,6 @@ async function refreshSnapshot({ initial = false } = {}) {
     const initializing = initial || !state.snapshot;
     state.snapshot = payload;
     lastSnapshotAt = Date.now();
-    document.querySelector(".pulse").classList.remove("is-error");
     if (initializing) {
       const hash = window.location.hash.slice(1);
       if (["work", "daily", "ideas", "achievements"].includes(hash)) state.tab = hash;
@@ -538,7 +536,6 @@ async function refreshSnapshot({ initial = false } = {}) {
       if (active) element.setAttribute("aria-current", "page");
       else element.removeAttribute("aria-current");
     });
-    document.querySelector("#updated-at").textContent = `LOCAL · ${formatMoment(payload.updated_at)}`;
     if (drawer.classList.contains("is-open")) {
       pendingSnapshotRender = true;
     } else {
@@ -554,19 +551,17 @@ async function boot() {
     await refreshSnapshot({ initial: true });
   } catch (error) {
     app.innerHTML = `<section class="error-state"><div class="empty-mark">!</div><h2>无法读取 LifeOS</h2><p>${esc(error.message)}</p></section>`;
-    document.querySelector(".pulse").classList.add("is-error");
-    document.querySelector("#updated-at").textContent = "LOCAL · ERROR";
   }
 }
 
 boot();
 
 window.setInterval(() => {
-  if (!document.hidden) refreshSnapshot().catch(() => document.querySelector(".pulse").classList.add("is-error"));
+  if (!document.hidden) refreshSnapshot().catch(() => {});
 }, 30000);
 
 document.addEventListener("visibilitychange", () => {
   if (!document.hidden && Date.now() - lastSnapshotAt > 5000) {
-    refreshSnapshot().catch(() => document.querySelector(".pulse").classList.add("is-error"));
+    refreshSnapshot().catch(() => {});
   }
 });
