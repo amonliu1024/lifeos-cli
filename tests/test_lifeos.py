@@ -1665,6 +1665,36 @@ class WorkWorkflowTest(CLITestCase):
         self.assertEqual(events_before, (self.data_dir / "events.jsonl").read_bytes())
         self.run_cli("validate")
 
+    def test_archived_project_missing_from_catalog_keeps_validation_quiet(self):
+        project_root = self.data_dir / "archived-project"
+        project_root.mkdir()
+        manifest_path = project_root / "lifeos-project.json"
+        manifest_path.write_text(json.dumps({
+            "schema_version": 1,
+            "project_key": "archived-project",
+            "name": "Archived Project",
+            "aliases": [],
+            "scope": "project",
+            "sources": {"dchat": {"groups": []}, "cooper": {"resources": []}},
+        }), encoding="utf-8")
+        project_id = self.created_id(self.run_cli(
+            "project-track", "--project-key", "archived-project",
+            "--source", "test fixture",
+        ))
+        self.run_cli(
+            "project-update", project_id,
+            "--tracking-state", "archived", "--reason", "项目已退役",
+        )
+        manifest_path.unlink()
+
+        result = self.run_cli("validate")
+        self.assertNotIn("当前不可用", result.stdout)
+
+        (self.data_dir / "now.md").write_text("stale view\n", encoding="utf-8")
+        invalid = self.run_cli("validate", check=False)
+        self.assertNotEqual(0, invalid.returncode)
+        self.assertIn("now.md 与事实源不一致", invalid.stderr)
+
     def test_invalid_manifest_isolated_from_work_validation(self):
         project_root = self.data_dir / "invalid-manifest-project"
         project_root.mkdir()

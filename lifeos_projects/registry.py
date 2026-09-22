@@ -111,7 +111,8 @@ def project_linkage_findings(
     return [
         f"{item.get('id')} 跟踪的项目当前不可用：{item.get('project_key')}"
         for item in projects_data.get("projects", [])
-        if item.get("project_key") not in known
+        if item.get("tracking_state") != "archived"
+        and item.get("project_key") not in known
     ]
 
 
