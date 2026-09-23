@@ -61,6 +61,13 @@ def capability_report(config: LifeOSConfig) -> dict[str, Any]:
             "missing_roots": [],
         }
 
+    if config.mirror_target is None:
+        mirror = _status("disabled", "not_configured")
+    elif shutil.which("rsync"):
+        mirror = _status("ready", "configured")
+    else:
+        mirror = _status("unavailable", "rsync_missing")
+
     return {
         "config": {
             "path": str(config.path),
@@ -82,6 +89,7 @@ def capability_report(config: LifeOSConfig) -> dict[str, Any]:
             },
             "dchat": dchat,
             "project_sources": project_sources,
+            "mirror": mirror,
         },
     }
 

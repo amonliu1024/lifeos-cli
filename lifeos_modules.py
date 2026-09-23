@@ -22,6 +22,7 @@ ROOT_EPILOG = """领域边界：
   dchat    只读 p2p / extp2p 私聊与项目清单群聊，维护私有原始证据；不发送消息、修改 DChat 或写 Work。
   reports  日报与周期报的结构和状态；正文由 lifeos Skill 的对应分支维护。
   web      只读本地工作台；只监听回环地址，不写 Work、日报或其它 Runtime。
+  mirror   把 Work 数据、日报与本机渲染的只读站点推到私有配置的 SSH 目标；证据、备份与配置不离开本机。
 
 所有时间窗口使用半开区间 [from, to)；具体参数、默认值和写入边界以对应子命令 --help 为准。"""
 
@@ -130,6 +131,12 @@ def _web(domains: Any, context: ModuleContext) -> None:
     register_web_parser(domains, context.data_dir)
 
 
+def _mirror(domains: Any, context: ModuleContext) -> None:
+    from lifeos_mirror.cli import register_mirror_parser
+
+    register_mirror_parser(domains, context.data_dir)
+
+
 COMMAND_MODULES = (
     CommandModule("work", _work),
     CommandModule("config", _config),
@@ -140,6 +147,7 @@ COMMAND_MODULES = (
     CommandModule("reports", _reports),
     CommandModule("project", _project),
     CommandModule("web", _web),
+    CommandModule("mirror", _mirror),
 )
 
 

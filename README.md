@@ -15,7 +15,7 @@
 
 # LifeOS CLI
 
-LifeOS 是一套完全跑在自己电脑上的个人工作系统，帮你把四件事记清楚：正在推进什么、下一步要交出什么结果、什么时候必须完成、完成之后留下了什么。它不需要账号，不同步到云端，也不依赖任何第三方包——装好之后，你的工作事实就是本机上一组只属于你的文件。
+LifeOS 是一套完全跑在自己电脑上的个人工作系统，帮你把四件事记清楚：正在推进什么、下一步要交出什么结果、什么时候必须完成、完成之后留下了什么。它不需要账号，默认不离开本机，也不依赖任何第三方包——装好之后，你的工作事实就是本机上一组只属于你的文件；想在自己的服务器上留一份时，可以手动把待办、日报和只读工作台镜像过去。
 
 ## 它解决什么问题
 
@@ -54,10 +54,15 @@ lifeos work init --self-name "你的名字" --source "本人确认"
 - `lifeos config`：Git 外私人配置的初始化与校验
 - `lifeos capabilities`：无副作用地查看本机哪些能力已就绪、已禁用或不可用
 - `lifeos web`：在本机回环地址启动只读工作台
+- `lifeos mirror`：把 Work 数据、日报与只读工作台单向镜像到自己的 SSH 服务器
 
 ## 只读 Web 工作台
 
 `lifeos web` 在本机回环地址启动一个只读工作台，用来浏览当前工作、日报、闪念和成果。它不写入任何数据，也不能通过它改变状态。
+
+## 服务器镜像
+
+`lifeos mirror configure --target lab:lifeos-mirror` 在私有配置里记下一个 SSH 目标，之后每次手动运行 `lifeos mirror push`，就用 rsync 把两部分单向推过去：`data/` 是 Work 事实、审计事件和日报原文，`site/` 是在本机渲染好的只读工作台。目标机不需要安装 LifeOS，任意静态文件服务托管 `site/` 即可浏览，项目名称已在本机解析；`--dry-run` 只列出将要变化的文件。派生视图、Sessions、Git、DChat 证据、备份与私有配置不在推送范围内。
 
 ## 工作模型
 
@@ -105,7 +110,7 @@ Sessions、Git、DChat 三类证据全部只读来源、只写私有快照，既
 
 - [lifeos.py](lifeos.py)：CLI 入口
 - [lifeos_work/](lifeos_work/)、[lifeos_reports/](lifeos_reports/)、[lifeos_sessions/](lifeos_sessions/)、[lifeos_git/](lifeos_git/)、[lifeos_dchat/](lifeos_dchat/)：Work 事实、日报周期报与各证据源模块
-- [lifeos_config/](lifeos_config/)、[lifeos_projects/](lifeos_projects/)、[lifeos_web/](lifeos_web/)：配置、项目发现与只读 Web 工作台
+- [lifeos_config/](lifeos_config/)、[lifeos_projects/](lifeos_projects/)、[lifeos_web/](lifeos_web/)、[lifeos_mirror/](lifeos_mirror/)：配置、项目发现、只读 Web 工作台与服务器镜像
 - [skills/lifeos/](skills/lifeos/)：唯一通用 Agent Skill 源码
 - [tests/](tests/)：合成 fixture 与回归测试
 - [ARCHITECTURE.md](ARCHITECTURE.md)、[DEPLOYMENT.md](DEPLOYMENT.md)、[CHANGELOG.md](CHANGELOG.md)：模块与数据边界、发布合同、版本记录

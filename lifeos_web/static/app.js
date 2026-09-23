@@ -303,7 +303,7 @@ function renderDaily() {
   }
   const report = state.report;
   const paper = report ? `<article class="report-paper">
-    <header class="report-header"><div><h2 class="report-date">${esc(report.day)}</h2><div class="report-meta">${status(report.status)}<span>${esc(report.counts.activities)} activities</span><span>·</span><span>${esc(report.counts.work_events)} work events</span></div></div><button class="open-source" data-action="open-report">打开原文 ↗</button></header>
+    <header class="report-header"><div><h2 class="report-date">${esc(report.day)}</h2><div class="report-meta">${status(report.status)}<span>${esc(report.counts.activities)} activities</span><span>·</span><span>${esc(report.counts.work_events)} work events</span></div></div>${state.snapshot?.published ? "" : '<button class="open-source" data-action="open-report">打开原文 ↗</button>'}</header>
     <div class="report-body">${markdown(report.body)}</div>
   </article>` : `<article class="report-paper report-skeleton" aria-label="正在读取日报"><span class="skeleton skeleton-report-date"></span><span class="skeleton skeleton-report-line"></span><span class="skeleton skeleton-report-line is-short"></span><span class="skeleton skeleton-report-line"></span></article>`;
   app.innerHTML = `${viewHeading("DAILY / LOG", reports.length)}

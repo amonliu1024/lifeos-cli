@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import json
 import os
+import re
 import tempfile
 import contextlib
 import fcntl
@@ -19,6 +20,7 @@ CONFIG_SCHEMA_VERSION = 1
 SUPPORTED_SESSION_SOURCES = SESSION_SOURCE_NAMES
 SUPPORTED_PROJECT_SOURCES = ("dchat", "cooper")
 DEFAULT_PROJECT_EXCLUDES = (".git", ".venv", "archive", "node_modules")
+MIRROR_TARGET_PATTERN = re.compile(r"[A-Za-z0-9._@-]+:[^\s:-][^\s:]*")
 
 
 class ConfigError(ValueError):
@@ -41,6 +43,7 @@ class LifeOSConfig:
     project_sources: tuple[str, ...]
     project_roots: tuple[str, ...]
     project_excludes: tuple[str, ...]
+    mirror_target: Optional[str] = None
 
 
 def resolve_config_path(value: Optional[str | os.PathLike[str]] = None) -> Path:
@@ -134,6 +137,14 @@ def _project_excludes(value: Any) -> tuple[str, ...]:
     return tuple(result)
 
 
+def _mirror_target(value: Any) -> str:
+    if not isinstance(value, str) or not MIRROR_TARGET_PATTERN.fullmatch(value.strip()):
+        raise ConfigError("modules.mirror.target 必须是 SSH 目标 host:path，例如 lab:lifeos-mirror")
+    if value.strip().startswith("-"):
+        raise ConfigError("modules.mirror.target 不得以 - 开头")
+    return value.strip()
+
+
 def normalize_config(payload: Any, path: Path, *, exists: bool) -> LifeOSConfig:
     root = _object(
         payload,
@@ -155,7 +166,7 @@ def normalize_config(payload: Any, path: Path, *, exists: bool) -> LifeOSConfig:
     modules = _object(
         root.get("modules"),
         "modules",
-        {"dchat", "sessions", "project_sources", "projects"},
+        {"dchat", "sessions", "project_sources", "projects", "mirror"},
         {"dchat", "sessions", "project_sources"},
     )
     dchat = _object(
@@ -193,6 +204,10 @@ def normalize_config(payload: Any, path: Path, *, exists: bool) -> LifeOSConfig:
         {"roots", "exclude"},
         {"roots", "exclude"},
     )
+    mirror_target = None
+    if modules.get("mirror") is not None:
+        mirror = _object(modules.get("mirror"), "modules.mirror", {"target"}, {"target"})
+        mirror_target = _mirror_target(mirror.get("target"))
     return LifeOSConfig(
         path=path,
         exists=exists,
@@ -210,6 +225,7 @@ def normalize_config(payload: Any, path: Path, *, exists: bool) -> LifeOSConfig:
         ),
         project_roots=_project_roots(projects.get("roots")),
         project_excludes=_project_excludes(projects.get("exclude")),
+        mirror_target=mirror_target,
     )
 
 
@@ -329,6 +345,24 @@ def configure_dchat(
     return {"changed": changed, "configured": True, "path": str(path)}
 
 
+def configure_mirror(
+    target: str,
+    value: Optional[str | os.PathLike[str]] = None,
+) -> dict[str, Any]:
+    normalized = _mirror_target(target)
+    path = resolve_config_path(value)
+    with _locked_config(path):
+        payload = _payload_for_update(path)
+        modules = dict(payload["modules"])
+        desired = {"target": normalized}
+        changed = modules.get("mirror") != desired or not path.exists()
+        modules["mirror"] = desired
+        payload["modules"] = modules
+        if changed:
+            _atomic_write_config(path, payload)
+    return {"changed": changed, "target": normalized, "path": str(path)}
+
+
 def configure_project_root(
     action: str,
     root: str | os.PathLike[str],
@@ -382,6 +416,7 @@ __all__ = [
     "SUPPORTED_SESSION_SOURCES",
     "default_payload",
     "configure_dchat",
+    "configure_mirror",
     "configure_project_root",
     "initialize_config",
     "load_config",

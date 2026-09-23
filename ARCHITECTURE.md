@@ -1,6 +1,6 @@
 # LifeOS CLI 架构
 
-本文描述当前仓库内部的模块、配置、存储、数据流和安全边界，并随 CLI 版本共同回滚。LifeOS 划分为三个信任区：公开代码仓库、本机私有配置和私有 Runtime；可复用行为进入版本管理，身份与本机路径通过配置提供，个人事实和辅助证据不进入 Git。
+本文描述当前仓库内部的模块、配置、存储、数据流和安全边界，并随 CLI 版本共同回滚。LifeOS 划分为三个信任区：公开代码仓库、本机私有配置和私有 Runtime；可复用行为进入版本管理，身份与本机路径通过配置提供，个人事实和辅助证据不进入 Git。可选的镜像目标是 Runtime 的只读下游，只接收显式推送的子集。
 
 ```text
 lifeos-cli 仓库
@@ -13,6 +13,12 @@ lifeos-cli 仓库
                     v
 $LIFEOS_HOME（默认 ~/.local/share/lifeos）
   Work 权威事实、审计事件、证据存储、日报与周期报
+                    |
+                    | lifeos mirror push（手动、单向）
+                    v
+镜像目标 <target>/（可选）
+  data/  Work 事实、审计事件、日报与周期报原文
+  site/  本机渲染的只读工作台，由静态文件服务托管
 ```
 
 ## 能力组合
@@ -27,6 +33,7 @@ $LIFEOS_HOME（默认 ~/.local/share/lifeos）
 - DChat 扫描从 Project Catalog 派生群 VID 并集；同一份清单关系同时决定群正文采集与项目索引，不用 Runtime 映射维护第二套 scope。
 - `lifeos_config` 负责本机私有模块设置和无副作用的能力检查。
 - `lifeos_web` 把现有 Work 与 Reports 读取入口投影为仅回环可达的只读页面；投影不落盘、不缓存，也不拥有任何个人事实。
+- `lifeos_mirror` 在 Work 与 Reports 锁内暂存 `data/`（Work 事实、审计事件、`reports/`）并调用 `lifeos_web.publish` 渲染 `site/`，再用 rsync 单向推到私有配置 `modules.mirror.target`；`site/` 以与回环服务相同的 `/api/*` 路径保存 JSON，前端不区分宿主，镜像端只读、不回写本机。
 
 是否在某台机器上启用内置模块，始终是本机私有配置的选择。
 
@@ -44,6 +51,8 @@ $LIFEOS_HOME（默认 ~/.local/share/lifeos）
 | 本地提交证据 | Git Evidence Runtime | `lifeos git` |
 | DChat 原始 revision 与索引 | DChat Runtime | `lifeos dchat scan` |
 | 日报与周期报 | Reports Runtime | `lifeos reports` 与 Agent Skill |
+| 镜像目标地址 | 私有配置 `modules.mirror` | `lifeos mirror configure` |
+| 镜像目标内容 | 本机 Runtime（镜像端只读） | 仅 `lifeos mirror push` 整体替换 `data/` 与 `site/` |
 
 Reports Runtime 以 `daily/` 保存由本机辅助证据生成的自然日日报，以 `periodic/` 保存只消费 confirmed 日报的周、月、季度、半年和年度报告。两类报告复用同一互斥锁、私有权限、原子替换与 draft/confirmed 状态；CLI 拥有周期窗口与状态，Agent Skill 拥有正文。逐日来源覆盖只在生成时由 CLI 计算和返回，不写入周期报。
 
@@ -101,3 +110,4 @@ Pi Adapter 读取 `~/.pi/agent/sessions` 的 v2/v3 树形 JSONL，以原生 user
 - Runtime 与配置默认位于仓库之外，并使用仅属主可访问的权限。
 - 只读能力检查不会创建配置目录或 Runtime 目录。
 - DChat 在显式配置前保持禁用。
+- 数据只在显式运行 `lifeos mirror push` 时离开本机，范围由 `lifeos_mirror.core` 的白名单唯一决定；Sessions、Git、DChat 证据、备份与配置不在其中。

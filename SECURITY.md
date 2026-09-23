@@ -18,3 +18,4 @@ LifeOS 采用本地优先设计，可能处理敏感的个人工作数据。请�
 - 私有配置默认位于 `~/.config/lifeos/config.json`。
 - 仓库内的测试 fixture 必须是合成数据。
 - LifeOS 配置 Schema 不接受凭据字段。
+- 数据只在运行 `lifeos mirror push` 时离开本机，且只包含 Work 数据、日报与由它们渲染的只读工作台；SSH 认证由系统 `ssh` 配置负责，不写入 LifeOS 配置。
