@@ -362,18 +362,15 @@ class PublicInterfaceTest(unittest.TestCase):
         self.assertEqual("", result.stderr)
         self.assertEqual(
             [
-                " ⢀⣠⠀⠀⠀⡀",
-                "⣰⢫⢖⣫⣝⡂⠙⣆",
-                "⡇⣏⢾⠀⠀⡷⠀⢸",
-                "⠹⣜⠦⣄⣠⠴⣣⠏",
-                " ⠈⠙⠒⠒⠋⠁",
-                " LifeOS",
-                f" v{VERSION}",
+                "╭────╴  ╶──╮",
+                f"│ ╭─────╴  │   LifeOS v{VERSION}",
+                "│ │ ╭──╮   │",
+                "│ │ ╵  ╵ ╷ │   以数据，照见人生。",
+                "│ ╰──────╯ │   让行动有迹，让经历成知。",
+                "╰──────────╯",
             ],
-            result.stdout.splitlines()[:7],
+            result.stdout.splitlines()[:6],
         )
-        self.assertIn("以数据，照见人生。", result.stdout)
-        self.assertIn("让行动有迹，让经历成知。", result.stdout)
         self.assertIn("lifeos --help", result.stdout)
 
     def test_task_schedule_options_follow_the_current_owner(self):

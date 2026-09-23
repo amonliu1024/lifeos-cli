@@ -27,40 +27,41 @@ ROOT_EPILOG = """领域边界：
 所有时间窗口使用半开区间 [from, to)；具体参数、默认值和写入边界以对应子命令 --help 为准。"""
 
 HOME_LOGO_LINES = (
-    "⢀⣠⠀⠀⠀⡀",
-    "⣰⢫⢖⣫⣝⡂⠙⣆",
-    "⡇⣏⢾⠀⠀⡷⠀⢸",
-    "⠹⣜⠦⣄⣠⠴⣣⠏",
-    "⠈⠙⠒⠒⠋⠁",
+    "╭────╴  ╶──╮",
+    "│ ╭─────╴  │",
+    "│ │ ╭──╮   │",
+    "│ │ ╵  ╵ ╷ │",
+    "│ ╰──────╯ │",
+    "╰──────────╯",
 )
 
 HOME_TEMPLATE = """{brand}
 
-以数据，照见人生。
-让行动有迹，让经历成知。
-
 常用命令
   lifeos work brief --mode current   查看当前工作简报
   lifeos work tasks                  查看待办
-  lifeos work show TASK-ID           查看一条待办的完整记录
+  lifeos work show ID                查看一条记录的原始内容
+  lifeos web serve --open            在浏览器打开本地工作台
+  lifeos mirror push                 把工作台同步到自己的服务器
   lifeos work task-add --help        新增待办
   lifeos work task-close --help      完成待办并记录完成依据
   lifeos work idea-add --help        记下一条闪念
-  lifeos project discover            发现项目工作区
-  lifeos capabilities                检查本机可用能力
 
 开始使用
+  lifeos capabilities                检查本机可用能力
+  lifeos project discover            发现项目工作区
   lifeos --help                      查看所有领域
-  lifeos <领域> --help                查看领域内的命令
+  lifeos <领域> --help               查看领域内的命令
 """
 
 
 def render_home(version):
-    """Render the compact terminal adaptation of the LifeOS brand mark."""
+    """Render the terminal adaptation of the layered-O brand mark beside the name and tagline."""
 
-    brand_lines = (*HOME_LOGO_LINES, "LifeOS", f"v{version}")
-    brand_width = max(len(line) for line in brand_lines)
-    brand = "\n".join(line.center(brand_width).rstrip() for line in brand_lines)
+    text_lines = ("", f"LifeOS v{version}", "", "以数据，照见人生。", "让行动有迹，让经历成知。", "")
+    brand = "\n".join(
+        f"{mark}   {text}".rstrip() for mark, text in zip(HOME_LOGO_LINES, text_lines)
+    )
     return HOME_TEMPLATE.format(brand=brand)
 
 
