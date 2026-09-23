@@ -18,7 +18,7 @@ $LIFEOS_HOME（默认 ~/.local/share/lifeos）
                     v
 镜像目标 <target>/（可选）
   data/  Work 事实、审计事件、日报与周期报原文
-  site/  本机渲染的只读工作台，由静态文件服务托管
+  site/  本机渲染的只读工作台，以 SSH 账户运行的静态服务把它作为站点根目录托管
 ```
 
 ## 能力组合

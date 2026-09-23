@@ -14,6 +14,7 @@ from __future__ import annotations
 import os
 import shutil
 import subprocess
+import sys
 import tempfile
 from pathlib import Path
 from typing import Any
@@ -93,7 +94,7 @@ def push(target: str, reports_root: Path, *, dry_run: bool = False) -> dict[str,
         if dry_run:
             command += ["--dry-run", "--itemize-changes"]
         command += ["--", str(staging / "data"), str(staging / "site"), destination]
-        result = subprocess.run(command)
+        result = subprocess.run(command, stdout=sys.stderr.fileno())
     if result.returncode != 0:
         raise MirrorError(f"rsync 退出码 {result.returncode}")
     return {

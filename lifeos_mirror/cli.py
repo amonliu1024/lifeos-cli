@@ -56,7 +56,8 @@ def register_mirror_parser(domains: argparse._SubParsersAction, data_dir: Path) 
         help="把 Work 数据、日报与只读站点单向镜像到自己的服务器",
         description=(
             "通过 SSH 与 rsync 向私有配置中的目标推送两部分：data/ 是 Work 事实、审计事件和日报，"
-            "site/ 是在本机渲染好的只读工作台静态文件，可由任意静态文件服务托管。"
+            "site/ 是在本机渲染好的只读工作台静态文件，由以 SSH 账户运行的静态服务作为站点根目录托管；"
+            "推送后的文件只有该账户可读。"
             "目标下这两个目录与本机保持一致，本机已删除的日报也会在目标端删除。"
         ),
         epilog="派生视图、Sessions、Git、DChat 证据、备份与私有配置从不离开本机。",

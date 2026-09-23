@@ -62,7 +62,7 @@ lifeos work init --self-name "你的名字" --source "本人确认"
 
 ## 服务器镜像
 
-`lifeos mirror configure --target lab:lifeos-mirror` 在私有配置里记下一个 SSH 目标，之后每次手动运行 `lifeos mirror push`，就用 rsync 把两部分单向推过去：`data/` 是 Work 事实、审计事件和日报原文，`site/` 是在本机渲染好的只读工作台。目标机不需要安装 LifeOS，任意静态文件服务托管 `site/` 即可浏览，项目名称已在本机解析；`--dry-run` 只列出将要变化的文件。派生视图、Sessions、Git、DChat 证据、备份与私有配置不在推送范围内。
+`lifeos mirror configure --target lab:lifeos-mirror` 在私有配置里记下一个 SSH 目标，之后每次手动运行 `lifeos mirror push`，就用 rsync 把两部分单向推过去：`data/` 是 Work 事实、审计事件和日报原文，`site/` 是在本机渲染好的只读工作台。目标机不需要安装 LifeOS，用静态文件服务以 `site/` 为站点根目录托管即可浏览，项目名称已在本机解析；推送后的文件只有 SSH 账户本人可读，静态服务需要以该账户运行，其他用户读不到镜像内容。`--dry-run` 只列出将要变化的文件。派生视图、Sessions、Git、DChat 证据、备份与私有配置不在推送范围内。
 
 ## 工作模型
 

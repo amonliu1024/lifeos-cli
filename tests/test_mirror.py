@@ -18,6 +18,7 @@ import os, shutil, sys
 args = sys.argv[1:]
 with open(os.environ["RSYNC_ARGS_FILE"], "w") as handle:
     handle.write("\\n".join(args))
+print("cd+++++++ data/")
 for source in args[args.index("--") + 1:-1]:
     shutil.copytree(source, os.path.join(os.environ["RSYNC_CAPTURE"], os.path.basename(source)))
 sys.exit(int(os.environ.get("FAKE_RSYNC_EXIT", "0")))
@@ -113,9 +114,11 @@ class MirrorCLITest(unittest.TestCase):
     def test_dry_run_does_not_ask_rsync_to_write(self):
         self.write_runtime()
         self.run_cli("mirror", "configure", "--target", "lab:mirror")
-        self.run_cli("mirror", "push", "--dry-run")
+        result = self.run_cli("mirror", "push", "--dry-run", "--json")
         argv = self.args_file.read_text(encoding="utf-8").splitlines()
         self.assertIn("--dry-run", argv[:argv.index("--")])
+        self.assertTrue(json.loads(result.stdout)["dry_run"])
+        self.assertIn("cd+++++++ data/", result.stderr)
 
     def test_push_requires_configured_target(self):
         self.write_runtime()
@@ -133,7 +136,10 @@ class MirrorCLITest(unittest.TestCase):
         self.assertIn("rsync 退出码 255", result.stderr)
 
     def test_configure_rejects_non_ssh_targets(self):
-        for target in ("/srv/lifeos", "lab:", "-oProxyCommand=x:y", "lab:-rf", "lab:a b"):
+        for target in (
+            "/srv/lifeos", "lab:", "-oProxyCommand=x:y", "lab:-rf", "lab:a b",
+            "lab:m;touch${IFS}x", "lab:$(id)", "lab:`id`", "lab:a|b", "lab:a&b", "lab:a'b",
+        ):
             result = self.run_cli("mirror", "configure", f"--target={target}", check=False)
             self.assertEqual(1, result.returncode, target)
         self.assertFalse(self.config_path.exists())

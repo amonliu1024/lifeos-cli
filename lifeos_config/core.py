@@ -20,7 +20,7 @@ CONFIG_SCHEMA_VERSION = 1
 SUPPORTED_SESSION_SOURCES = SESSION_SOURCE_NAMES
 SUPPORTED_PROJECT_SOURCES = ("dchat", "cooper")
 DEFAULT_PROJECT_EXCLUDES = (".git", ".venv", "archive", "node_modules")
-MIRROR_TARGET_PATTERN = re.compile(r"[A-Za-z0-9._@-]+:[^\s:-][^\s:]*")
+MIRROR_TARGET_PATTERN = re.compile(r"[A-Za-z0-9._@-]+:[A-Za-z0-9._~/][A-Za-z0-9._~/-]*")
 
 
 class ConfigError(ValueError):
@@ -139,7 +139,10 @@ def _project_excludes(value: Any) -> tuple[str, ...]:
 
 def _mirror_target(value: Any) -> str:
     if not isinstance(value, str) or not MIRROR_TARGET_PATTERN.fullmatch(value.strip()):
-        raise ConfigError("modules.mirror.target 必须是 SSH 目标 host:path，例如 lab:lifeos-mirror")
+        raise ConfigError(
+            "modules.mirror.target 必须是 SSH 目标 host:path，路径只允许字母、数字和 . _ ~ / -，"
+            "例如 lab:lifeos-mirror"
+        )
     if value.strip().startswith("-"):
         raise ConfigError("modules.mirror.target 不得以 - 开头")
     return value.strip()
