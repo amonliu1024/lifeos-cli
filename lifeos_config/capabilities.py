@@ -39,6 +39,13 @@ def capability_report(config: LifeOSConfig) -> dict[str, Any]:
     else:
         dchat = _status("unavailable", "dws_wrapper_missing")
 
+    if not config.calendar.enabled:
+        calendar = _status("disabled", "not_enabled")
+    elif config.dchat.dws_wrapper and Path(config.dchat.dws_wrapper).is_file():
+        calendar = _status("ready", "configured")
+    else:
+        calendar = _status("unavailable", "dws_wrapper_missing")
+
     missing_project_roots = [
         root for root in config.project_roots if not Path(root).is_dir()
     ]
@@ -88,6 +95,7 @@ def capability_report(config: LifeOSConfig) -> dict[str, Any]:
                 "sources": sessions,
             },
             "dchat": dchat,
+            "calendar": calendar,
             "project_sources": project_sources,
             "mirror": mirror,
         },

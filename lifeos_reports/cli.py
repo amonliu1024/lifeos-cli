@@ -196,6 +196,27 @@ def command_write(args: Any) -> None:
             _fail(f"--git-commit-id 格式非法：{invalid_git_id}")
     if args.git_scan_id and not store.GIT_SCAN_ID.fullmatch(args.git_scan_id):
         _fail(f"--git-scan-id 格式非法：{args.git_scan_id}")
+    if args.calendar_scan_id and not store.CALENDAR_SCAN_ID.fullmatch(args.calendar_scan_id):
+        _fail(f"--calendar-scan-id 格式非法：{args.calendar_scan_id}")
+    if args.calendar_event_ids and not args.calendar_scan_id:
+        _fail("--calendar-event-id 需要同时给出 --calendar-scan-id")
+    if args.calendar_event_ids:
+        if len(args.calendar_event_ids) != len(set(args.calendar_event_ids)):
+            _fail("--calendar-event-id 不能重复")
+        invalid_calendar_id = next(
+            (value for value in args.calendar_event_ids if not store.CALENDAR_EVENT_ID.fullmatch(value)),
+            None,
+        )
+        if invalid_calendar_id:
+            _fail(f"--calendar-event-id 格式非法：{invalid_calendar_id}")
+    calendar_updates: Dict[str, Any] = {}
+    if args.calendar_scan_id:
+        # 日历只在启用并扫描过时进入 frontmatter；没给 scan 时两个字段都不出现。
+        calendar_updates = {
+            "calendar_scan_id": args.calendar_scan_id,
+            "calendar_events": len(args.calendar_event_ids),
+            "calendar_event_ids": args.calendar_event_ids,
+        }
 
     with store.locked(reports_root):
         try:
@@ -218,6 +239,7 @@ def command_write(args: Any) -> None:
                     "activity_ids": args.activity_ids,
                     "work_event_ids": args.work_event_ids,
                     "git_commit_ids": args.git_commit_ids,
+                    **calendar_updates,
                 },
             )
         except ReportError as exc:
@@ -238,6 +260,8 @@ def command_write(args: Any) -> None:
             "unresolved": args.unresolved,
             "git_scan_id": args.git_scan_id,
             "git_commits": len(args.git_commit_ids),
+            "calendar_scan_id": args.calendar_scan_id,
+            "calendar_events": len(args.calendar_event_ids) if args.calendar_scan_id else None,
         },
         [
             f"{day.isoformat()} 的日报草稿已写入 · 会话 {len(args.activity_ids)}"
@@ -694,6 +718,20 @@ def register_reports_parser(domains: Any, data_dir: Path) -> None:
         dest="git_scan_id",
         metavar="GITSCAN-ID",
         help="Daily 使用的 Git scan 快照 ID（可选）",
+    )
+    command.add_argument(
+        "--calendar-scan-id",
+        dest="calendar_scan_id",
+        metavar="CALSCAN-ID",
+        help="Daily 使用的日历 scan ID（可选；给出时才写入 calendar_events 与 calendar_event_ids）",
+    )
+    command.add_argument(
+        "--calendar-event-id",
+        dest="calendar_event_ids",
+        action="append",
+        default=[],
+        metavar="CAL-ID",
+        help="窗口内的日程实例 ID（index 的 instance_id）；可重复，必须唯一，需要 --calendar-scan-id",
     )
     command.add_argument(
         "--git-commit-id",

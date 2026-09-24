@@ -6,6 +6,7 @@
 
 ### 新增
 
+- 新增 `lifeos calendar`：启用后按日报的自然日窗口只读 D-Chat 日历，把当天排的会存成快照，每条只留标题、起止时间、类型和参会人姓名；`series set` 可为循环会议记下默认去或不去。日报多一节「会议」，写你确认参加的会、每场服务哪个项目和总时长；Agent 生成日报后必须先列出准备记入和剔除的会由你确认，日历本身不判断你去没去。frontmatter 新增 `calendar_scan_id`、`calendar_events`、`calendar_event_ids`，未启用日历的日报不变。
 - 新增 `lifeos reports prune`：列出并删除重做日报或周期报时留下的旧稿快照，默认只预演，加 `--apply` 才删除，`--day` 可只处理某一天；当前日报与周期报不在范围内。
 
 ## v1.3.0

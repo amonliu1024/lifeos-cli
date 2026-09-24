@@ -29,7 +29,7 @@ lifeos reports begin --day <YYYY-MM-DD> --json
 
 ## 二、盘点并审计证据
 
-读取正文、判断 Activity、处理生命周期或填写 frontmatter 前，先读 `session-evidence.md`，本节的采集门、完整性判据、异常审计清单和计数口径全部按该文件执行。运行 `lifeos dchat validate --json` 判断独立 DChat Evidence 是否已配置；配置有效时再读 `dchat-evidence.md`。尚未配置只表示这一路尚未启用，不阻塞其他来源形成日报。
+读取正文、判断 Activity、处理生命周期或填写 frontmatter 前，先读 `session-evidence.md`，本节的采集门、完整性判据、异常审计清单和计数口径全部按该文件执行。运行 `lifeos dchat validate --json` 判断独立 DChat Evidence 是否已配置；配置有效时再读 `dchat-evidence.md`。运行 `lifeos calendar validate --json` 判断日历来源是否已启用；启用时再读 [`calendar-evidence.md`](calendar-evidence.md)。尚未配置只表示这一路尚未启用，不阻塞其他来源形成日报。
 
 ```bash
 lifeos sessions scans --from <window.from> --to <window.to> --json
@@ -46,6 +46,10 @@ lifeos dchat validate --json
 lifeos dchat scans --from <window.from> --to <window.to> --json
 lifeos dchat scan --from <window.from> --to <window.to> --json
 lifeos dchat index --from <window.from> --to <window.to> --json
+lifeos calendar validate --json
+lifeos calendar scans --from <window.from> --to <window.to> --json
+lifeos calendar scan --from <window.from> --to <window.to> --json
+lifeos calendar index --from <window.from> --to <window.to> --json
 ```
 
 按以下顺序执行：
@@ -56,8 +60,9 @@ lifeos dchat index --from <window.from> --to <window.to> --json
 4. 有显式注册的 Git 仓库时必须执行 Git 检查门：先读目标窗口的 `git scans`，可复用快照须通过 `git validate --scan`，否则按需运行一次 `git scan`。Git scan 只读本地提交历史、写入私有证据快照，不修改仓库、不访问 remote、不写 Work。Git 不可用、没有注册仓库或扫描失败，不自动等于当天没有工作；只有当日报结论依赖 Git 且缺口影响事实时，才披露 Pending 或提问。正文出现任何提交、推送、部署层级断言时，对应仓库窗口内必须有通过校验的快照，否则该断言降级为“会话陈述”。
 5. 本人主动提供的补录作为第三路证据；没有实质缺口时不为了凑齐输入而提问。
 6. DChat 已配置时，按 `dchat-evidence.md` 通过精确窗口 scan 和 validate 后读取完整 index，只对可能改变工作主线的会话渐进调用 pack。可读 scope 只采用 DChat 的结构化会话类型与当前项目清单中的群 VID，不按账号名称、头像或消息内容猜测身份，也不用群名、活跃度、本人是否发言或关键词扩大范围。
+7. 日历已启用时，按 `calendar-evidence.md` 通过精确窗口 scan 后读取 index，按性质、证据、名单三步形成「准备记入」和「剔除」两张清单；日历只证明排了会，去没去由本人确认。
 
-完成标准：Sessions 采集门与完整 index 已通过 `session-evidence.md` 的判据；所有可能改变自然日事实的异常已有解释或 Pending；Work changes 已读取；Git 检查门已执行且失败与缺失边界已解释；DChat 已配置时其采集门与项目清单冲突已处理，未配置时没有把缺失解释成“没有聊天工作”。
+完成标准：Sessions 采集门与完整 index 已通过 `session-evidence.md` 的判据；所有可能改变自然日事实的异常已有解释或 Pending；Work changes 已读取；Git 检查门已执行且失败与缺失边界已解释；DChat 已配置时其采集门与项目清单冲突已处理，未配置时没有把缺失解释成“没有聊天工作”；日历已启用时两张会议清单已形成。
 
 ## 三、建立工作主线
 
@@ -134,6 +139,10 @@ lifeos dchat index --from <window.from> --to <window.to> --json
 
 - 一行一条，最多五条，写对象和终态。
 
+## 会议
+
+- 起止时间 名称 — 服务的项目或需求（部门例会、培训这类写性质）；只写本人确认参加的会，末行写「共 N 小时。」。日历未启用或当天没有会时整节省略。
+
 ## 欠与等
 
 - 欠：今天新承诺的事，带日期。
@@ -190,6 +199,8 @@ Daily 发现「后续要做」只决定日报如何表达。只有本人另外�
 
 使用 `lifeos reports write` 写入既有 draft，不直接编辑 `begin` 返回路径；正文文件只含 Markdown，frontmatter 由 CLI 拥有，字段与选项以 `--help` 为准。
 
+日历已启用时，写入前必须在对话里列出「准备记入」和「剔除」两张会议清单（写法见 `calendar-evidence.md`），本人改完确认后才把记入的会写进「会议」一节；这一步不能省略，也不能用名单代替本人确认。`--calendar-scan-id` 传本次使用的 scan，`--calendar-event-id` 传窗口内全部日程的 `instance_id`（记入与剔除的都传，它们是审计信息）。
+
 计数与 ID 的口径：`activity_ids` 是第二节那份完整 index 的去重 Activity ID，格式为 `ACT-` 加 24 位 Base32；`sessions_partial` / `sessions_interrupted` / `sessions_omitted` 同样只来自这一份 index，按 `session-evidence.md` 的定义取值；`work_event_ids`、`git_commit_ids` 和 `git_commits` 只记正文实际引用的对象。`git_commit_ids` 使用稳定的 `repo_key@完整 SHA`，不使用 LifeOS 另造的 per-commit ref；`project_key` 在 Git scan 时由当前 Project Catalog 即时解析，不复制进日报 ID。
 
 本人明确确认后才运行 `lifeos reports confirm --day <YYYY-MM-DD>`，随后运行 `lifeos reports validate`。
@@ -198,4 +209,4 @@ Daily 发现「后续要做」只决定日报如何表达。只有本人另外�
 
 ## 边界
 
-Daily 分支不生成周期报或复盘，不写 Obsidian；周、月、季度、半年和年度总结转顶层 Periodic 分支。不关闭、改期或变更已有 Work 事实，也不替本人确认。Git 证据只读本地显式注册仓库，不上传、不访问 remote、不保存完整 diff、changed paths、author email 或未提交状态。DChat 只读结构化类型为 `p2p / extp2p` 的私聊和当前项目清单声明的群聊，不发送消息、不修改 DChat、不下载附件本体；DChat 声称的完成或上线必须由更高等级证据核对。
+Daily 分支不生成周期报或复盘，不写 Obsidian；周、月、季度、半年和年度总结转顶层 Periodic 分支。不关闭、改期或变更已有 Work 事实，也不替本人确认。Git 证据只读本地显式注册仓库，不上传、不访问 remote、不保存完整 diff、changed paths、author email 或未提交状态。DChat 只读结构化类型为 `p2p / extp2p` 的私聊和当前项目清单声明的群聊，不发送消息、不修改 DChat、不下载附件本体；DChat 声称的完成或上线必须由更高等级证据核对。日历只读日程的标题、起止时间、类型和参会人，不改日程、不回复邀请；会议是否参加只以本人确认为准，日历不能单独证明任何交付层级。

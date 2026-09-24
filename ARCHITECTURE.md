@@ -50,6 +50,7 @@ $LIFEOS_HOME（默认 ~/.local/share/lifeos）
 | Agent 会话派生数据 | Sessions Runtime | `lifeos sessions scan/rebuild/prune` |
 | 本地提交证据 | Git Evidence Runtime | `lifeos git` |
 | DChat 原始 revision 与索引 | DChat Runtime | `lifeos dchat scan` |
+| 日历日程快照与循环会议出席名单 | Calendar Runtime | `lifeos calendar scan`、`lifeos calendar series set` |
 | 日报与周期报 | Reports Runtime | `lifeos reports` 与 Agent Skill |
 | 镜像目标地址 | 私有配置 `modules.mirror` | `lifeos mirror configure` |
 | 镜像目标内容 | 本机 Runtime（镜像端只读） | 仅 `lifeos mirror push` 整体替换 `data/` 与 `site/` |
@@ -96,9 +97,11 @@ Project Catalog 扫描全部配置根，不跟随符号链接，也不从 Work �
                         Agent 解释 / 日报 / 周期报
 ```
 
-来源适配器保留来源身份；输入不完整或未知时直接报告，不做猜测。Sessions、Git 和 DChat 证据不会写入 Work。日报工作流可以组合这些证据；周期报只消费已经确认的日报正文，不回到这些底层来源。两类报告里的候选工作都只有经过用户单独授权后才能成为 Work 事实。
+来源适配器保留来源身份；输入不完整或未知时直接报告，不做猜测。Sessions、Git、DChat 和日历证据不会写入 Work。日报工作流可以组合这些证据；周期报只消费已经确认的日报正文，不回到这些底层来源。两类报告里的候选工作都只有经过用户单独授权后才能成为 Work 事实。
 
 DChat 的 `p2p / extp2p` 私聊全部进入正文采集；`channel / extchannel` 只有 VID 至少由一份当前有效项目清单声明时进入。多个项目声明同一 VID 时只采集一次，索引保留全部项目关联；VID 从全部清单退出只停止后续正文读取，既有不可变 revision 继续保留。
+
+日历经 DChat 同一个已批准的 dws wrapper 只读 D-Chat 日程：按日报的自然日窗口采集，`search` 单页上限 10 条时递归拆分窗口，每条日程只保留标题、起止时间、类型和参会人姓名，内容寻址存成不可变快照，scan manifest 只引用快照；回复状态、组织者、描述和链接不进 Runtime。循环会议的出席名单是 Calendar Runtime 里的只追加日志（`series.jsonl`），当前值取最后一条，它只是 Daily 提议的默认值，去没去每次仍由本人确认。日报 frontmatter 只在给出 `calendar_scan_id` 时带 `calendar_events` 与 `calendar_event_ids`，旧日报形状不变。
 
 Sessions checkpoint 的 `cache_generation` 由来源 Adapter revision、shared extraction revision 和 Slice Schema 共同决定。来源特有解析变化只提升对应 Adapter revision，共享提取或判断语义变化提升 shared extraction revision。
 
@@ -109,5 +112,5 @@ Pi Adapter 读取 `~/.pi/agent/sessions` 的 v2/v3 树形 JSONL，以原生 user
 - 配置 Schema 拒绝未知字段和疑似凭据字段，不充当通用秘密存储。
 - Runtime 与配置默认位于仓库之外，并使用仅属主可访问的权限。
 - 只读能力检查不会创建配置目录或 Runtime 目录。
-- DChat 在显式配置前保持禁用。
-- 数据只在显式运行 `lifeos mirror push` 时离开本机，范围由 `lifeos_mirror.core` 的白名单唯一决定；Sessions、Git、DChat 证据、备份与配置不在其中。
+- DChat 与日历在显式配置前保持禁用；日历只读，不创建、修改或回复任何日程。
+- 数据只在显式运行 `lifeos mirror push` 时离开本机，范围由 `lifeos_mirror.core` 的白名单唯一决定；Sessions、Git、DChat、日历证据、备份与配置不在其中。

@@ -37,6 +37,8 @@ FILE_MODE = 0o600
 STATUSES = ("draft", "confirmed")
 GIT_SCAN_ID = re.compile(r"^GITSCAN-[0-9]{8}T[0-9]{6}[+-][0-9]{4}-[0-9a-f]{8}$")
 GIT_COMMIT_ID = re.compile(r"^[A-Za-z0-9][A-Za-z0-9_.-]*@[0-9a-f]{40}$")
+CALENDAR_SCAN_ID = re.compile(r"^CALSCAN-[0-9]{8}T[0-9]{6}[+-][0-9]{4}-[0-9a-f]{8}$")
+CALENDAR_EVENT_ID = re.compile(r"^CAL-[0-9a-f]{12}$")
 
 SCALAR_KEYS = (
     "day",
@@ -47,6 +49,7 @@ SCALAR_KEYS = (
     "confirmed_at",
     "window",
     "git_scan_id",
+    "calendar_scan_id",
 )
 COUNT_KEYS = (
     "sessions_activities",
@@ -57,11 +60,13 @@ COUNT_KEYS = (
     "user_notes",
     "unresolved",
     "git_commits",
+    "calendar_events",
 )
 LIST_KEYS = (
     "activity_ids",
     "work_event_ids",
     "git_commit_ids",
+    "calendar_event_ids",
 )
 FIELD_ORDER = SCALAR_KEYS + COUNT_KEYS + LIST_KEYS
 REQUIRED_KEYS = (
@@ -660,6 +665,22 @@ def check_report(
         for value in git_commit_ids:
             if not isinstance(value, str) or not GIT_COMMIT_ID.fullmatch(value):
                 problems.append(f"git_commit_ids 格式非法：{value}")
+    calendar_scan_id = meta.get("calendar_scan_id")
+    if calendar_scan_id not in (None, "") and (
+        not isinstance(calendar_scan_id, str) or not CALENDAR_SCAN_ID.fullmatch(calendar_scan_id)
+    ):
+        problems.append(f"calendar_scan_id 非法：{calendar_scan_id}")
+    calendar_event_ids = meta.get("calendar_event_ids")
+    if isinstance(calendar_event_ids, list):
+        calendar_key_values = [value if isinstance(value, str) else repr(value) for value in calendar_event_ids]
+        if len(calendar_key_values) != len(set(calendar_key_values)):
+            problems.append("calendar_event_ids 不能重复")
+        for value in calendar_event_ids:
+            if not isinstance(value, str) or not CALENDAR_EVENT_ID.fullmatch(value):
+                problems.append(f"calendar_event_ids 格式非法：{value}")
+        if isinstance(meta.get("calendar_events"), str) and meta["calendar_events"].isdigit():
+            if int(meta["calendar_events"]) != len(set(calendar_key_values)):
+                problems.append("calendar_events 必须等于唯一 calendar_event_ids 数量")
     if isinstance(activity_ids, list) and isinstance(meta.get("sessions_activities"), str) and meta["sessions_activities"].isdigit():
         if int(meta["sessions_activities"]) != len(set(activity_key_values)):
             problems.append("sessions_activities 必须等于唯一 activity_ids 数量")

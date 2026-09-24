@@ -20,6 +20,7 @@ ROOT_EPILOG = """领域边界：
   sessions 只读 Agent 应用来源，维护私有派生索引；不写来源日志、Work 或日报。
   git      只读本地 Git 提交，维护日报辅助证据快照；不修改仓库、remote、Work 或日报正文。
   dchat    只读 p2p / extp2p 私聊与项目清单群聊，维护私有原始证据；不发送消息、修改 DChat 或写 Work。
+  calendar 只读 D-Chat 日历日程，维护私有快照与循环会议出席名单；不改日程、不回复邀请、不写 Work。
   reports  日报与周期报的结构和状态；正文由 lifeos Skill 的对应分支维护。
   web      只读本地工作台；只监听回环地址，不写 Work、日报或其它 Runtime。
   mirror   把 Work 数据、日报与本机渲染的只读站点推到私有配置的 SSH 目标；证据、备份与配置不离开本机。
@@ -108,6 +109,12 @@ def _dchat(domains: Any, context: ModuleContext) -> None:
     register_dchat_parser(domains, context.data_dir)
 
 
+def _calendar(domains: Any, context: ModuleContext) -> None:
+    from lifeos_calendar.cli import register_calendar_parser
+
+    register_calendar_parser(domains, context.data_dir)
+
+
 def _sessions(domains: Any, context: ModuleContext) -> None:
     from lifeos_sessions.cli import register_sessions_parser
 
@@ -144,6 +151,7 @@ COMMAND_MODULES = (
     CommandModule("capabilities", _capabilities),
     CommandModule("git", _git),
     CommandModule("dchat", _dchat),
+    CommandModule("calendar", _calendar),
     CommandModule("sessions", _sessions),
     CommandModule("reports", _reports),
     CommandModule("project", _project),

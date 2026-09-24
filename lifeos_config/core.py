@@ -34,6 +34,11 @@ class DChatConfig:
 
 
 @dataclass(frozen=True)
+class CalendarConfig:
+    enabled: bool
+
+
+@dataclass(frozen=True)
 class LifeOSConfig:
     path: Path
     exists: bool
@@ -44,6 +49,7 @@ class LifeOSConfig:
     project_roots: tuple[str, ...]
     project_excludes: tuple[str, ...]
     mirror_target: Optional[str] = None
+    calendar: CalendarConfig = CalendarConfig(False)
 
 
 def resolve_config_path(value: Optional[str | os.PathLike[str]] = None) -> Path:
@@ -169,9 +175,15 @@ def normalize_config(payload: Any, path: Path, *, exists: bool) -> LifeOSConfig:
     modules = _object(
         root.get("modules"),
         "modules",
-        {"dchat", "sessions", "project_sources", "projects", "mirror"},
+        {"dchat", "sessions", "project_sources", "projects", "mirror", "calendar"},
         {"dchat", "sessions", "project_sources"},
     )
+    calendar_enabled = False
+    if modules.get("calendar") is not None:
+        calendar = _object(modules.get("calendar"), "modules.calendar", {"enabled"}, {"enabled"})
+        calendar_enabled = calendar.get("enabled")
+        if not isinstance(calendar_enabled, bool):
+            raise ConfigError("modules.calendar.enabled 必须是布尔值")
     dchat = _object(
         modules.get("dchat"),
         "modules.dchat",
@@ -229,6 +241,7 @@ def normalize_config(payload: Any, path: Path, *, exists: bool) -> LifeOSConfig:
         project_roots=_project_roots(projects.get("roots")),
         project_excludes=_project_excludes(projects.get("exclude")),
         mirror_target=mirror_target,
+        calendar=CalendarConfig(calendar_enabled),
     )
 
 
@@ -348,6 +361,25 @@ def configure_dchat(
     return {"changed": changed, "configured": True, "path": str(path)}
 
 
+def configure_calendar(
+    enabled: bool = True,
+    value: Optional[str | os.PathLike[str]] = None,
+) -> dict[str, Any]:
+    """Flip the calendar source; it reuses the approved DChat wrapper, so none is stored here."""
+
+    path = resolve_config_path(value)
+    with _locked_config(path):
+        payload = _payload_for_update(path)
+        modules = dict(payload["modules"])
+        desired = {"enabled": bool(enabled)}
+        changed = modules.get("calendar") != desired or not path.exists()
+        modules["calendar"] = desired
+        payload["modules"] = modules
+        if changed:
+            _atomic_write_config(path, payload)
+    return {"changed": changed, "enabled": bool(enabled), "path": str(path)}
+
+
 def configure_mirror(
     target: str,
     value: Optional[str | os.PathLike[str]] = None,
@@ -411,6 +443,7 @@ def configure_project_root(
 
 __all__ = [
     "CONFIG_SCHEMA_VERSION",
+    "CalendarConfig",
     "ConfigError",
     "DEFAULT_PROJECT_EXCLUDES",
     "DChatConfig",
@@ -418,6 +451,7 @@ __all__ = [
     "SUPPORTED_PROJECT_SOURCES",
     "SUPPORTED_SESSION_SOURCES",
     "default_payload",
+    "configure_calendar",
     "configure_dchat",
     "configure_mirror",
     "configure_project_root",
