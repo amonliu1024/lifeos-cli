@@ -948,5 +948,46 @@ class PeriodicReportsTest(ReportsCLITestCase):
         self.assertEqual("draft", meta["status"])
 
 
+class PruneTest(ReportsCLITestCase):
+    def _confirmed_then_redone(self, day="2026-08-09"):
+        self.run_cli("begin", "--day", day)
+        self.write_body(day)
+        self.run_cli("confirm", "--day", day)
+        self.run_cli("begin", "--day", day, "--redo")
+        self.write_body(day, body="## 概览\n\n重做后的正文。\n")
+        return self.report(day)
+
+    def test_prune_defaults_to_dry_run_and_apply_removes_only_snapshots(self):
+        current = self._confirmed_then_redone()
+        snapshots = store.superseded_paths(self.reports_root, date(2026, 8, 9))
+        self.assertEqual(1, len(snapshots))
+        before = current.read_bytes()
+
+        planned = json.loads(self.run_cli("prune", "--json").stdout)
+        self.assertFalse(planned["applied"])
+        self.assertEqual([str(snapshots[0])], planned["planned"])
+        self.assertTrue(snapshots[0].is_file())
+
+        applied = json.loads(self.run_cli("prune", "--apply", "--json").stdout)
+        self.assertTrue(applied["applied"])
+        self.assertEqual([str(snapshots[0])], applied["removed"])
+        self.assertFalse(snapshots[0].exists())
+        self.assertEqual(before, current.read_bytes())
+        self.assertEqual([], store.superseded_paths(self.reports_root, date(2026, 8, 9)))
+
+        again = json.loads(self.run_cli("prune", "--apply", "--json").stdout)
+        self.assertEqual([], again["removed"])
+
+    def test_prune_day_limits_scope_to_that_day(self):
+        self._confirmed_then_redone("2026-08-09")
+        self._confirmed_then_redone("2026-08-10")
+
+        payload = json.loads(self.run_cli("prune", "--day", "2026-08-09", "--apply", "--json").stdout)
+
+        self.assertEqual(1, len(payload["removed"]))
+        self.assertEqual([], store.superseded_paths(self.reports_root, date(2026, 8, 9)))
+        self.assertEqual(1, len(store.superseded_paths(self.reports_root, date(2026, 8, 10))))
+
+
 if __name__ == "__main__":
     unittest.main()

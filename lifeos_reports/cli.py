@@ -14,7 +14,7 @@ import json
 import sys
 from datetime import date
 from pathlib import Path
-from typing import Any, Dict, List
+from typing import Any, Dict, List, Optional
 
 from . import store
 from .store import ReportError
@@ -280,6 +280,27 @@ def command_path(args: Any) -> None:
         lines.append("尚未生成")
     if payload["superseded"]:
         lines.append(f"另有 {len(payload['superseded'])} 份 superseded 快照")
+    _emit(args, payload, lines)
+
+
+def command_prune(args: Any) -> None:
+    reports_root: Path = args.reports_root
+    day: Optional[date] = args.day
+    targets = store.prune_superseded(reports_root, day, apply=args.apply)
+    scope = f"{day.isoformat()} 的" if day else "全部"
+    payload: Dict[str, Any] = {
+        "applied": args.apply,
+        "day": day.isoformat() if day else None,
+        "removed" if args.apply else "planned": [str(item) for item in targets],
+    }
+    if not targets:
+        lines = [f"{scope}日报与周期报没有 superseded 快照"]
+    elif args.apply:
+        lines = [f"已删除 {scope} superseded 快照 {len(targets)} 份"] + [f"  {item.name}" for item in targets]
+    else:
+        lines = [f"将删除 {scope} superseded 快照 {len(targets)} 份（加 --apply 执行）"] + [
+            f"  {item.name}" for item in targets
+        ]
     _emit(args, payload, lines)
 
 
@@ -722,6 +743,25 @@ def register_reports_parser(domains: Any, data_dir: Path) -> None:
     )
     command.add_argument("--json", action="store_true", help="以 JSON 输出路径、状态与快照列表")
     command.set_defaults(handler=_with_migration_recovery(command_path))
+
+    command = commands.add_parser(
+        "prune",
+        help="删除重做日报或周期报时留下的 superseded 快照（默认只预演）",
+        description=(
+            "列出并删除 --redo 留下的 superseded 快照。默认只报告将删除的文件；"
+            "--apply 才真正删除。当前日报与周期报不在范围内，任何情况下都不会被动过。"
+        ),
+        epilog="prune 只删快照，不改变任何报告的正文与状态；删除后不可恢复。",
+    )
+    command.add_argument(
+        "--day",
+        type=_validate_day,
+        metavar="YYYY-MM-DD",
+        help="只处理该自然日的日报快照；省略时处理全部日报与周期报快照",
+    )
+    command.add_argument("--apply", action="store_true", help="真正删除；省略时只列出将删除的快照")
+    command.add_argument("--json", action="store_true", help="以 JSON 输出计划或已删除的快照")
+    command.set_defaults(handler=_with_migration_recovery(command_prune))
 
     command = commands.add_parser(
         "list",

@@ -86,7 +86,7 @@ Sessions、Git、DChat 三类证据全部只读来源、只写私有快照，既
 
 ## 日报与周期报
 
-日报正文由 Skill 的 Daily 分支生成，CLI 只拥有它的落点、权限、frontmatter、确认状态，以及重做时的旧稿留存。周期报不重新扫描会话、提交或聊天，只读取目标周期内已确认的日报。`lifeos reports path --day <日期> --json` 是只读状态入口，返回该日在 Asia/Shanghai 的完整自然日窗口。
+日报正文由 Skill 的 Daily 分支生成，CLI 只拥有它的落点、权限、frontmatter、确认状态，以及重做时的旧稿留存。周期报不重新扫描会话、提交或聊天，只读取目标周期内已确认的日报。`lifeos reports path --day <日期> --json` 是只读状态入口，返回该日在 Asia/Shanghai 的完整自然日窗口。重做留下的旧稿快照用 `lifeos reports prune` 查看，加 `--apply` 才删除，当前报告不在范围内。
 
 ## Agent Skill
 

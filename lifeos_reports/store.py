@@ -159,6 +159,34 @@ def periodic_superseded_paths(reports_root: Path, period: str) -> List[Path]:
     return sorted(path for path in directory.glob(f"{prefix}*.md") if path.is_file())
 
 
+def all_superseded_paths(reports_root: Path, day: Optional[date] = None) -> List[Path]:
+    """Return superseded snapshots only; current reports never match these names."""
+
+    if day is not None:
+        return superseded_paths(reports_root, day)
+    found: List[Path] = []
+    for directory, pattern in (
+        (daily_dir(reports_root), SUPERSEDED_NAME),
+        (periodic_dir(reports_root), PERIOD_SUPERSEDED_NAME),
+    ):
+        if directory.is_dir():
+            found.extend(
+                path for path in sorted(directory.iterdir()) if path.is_file() and pattern.match(path.name)
+            )
+    return found
+
+
+def prune_superseded(reports_root: Path, day: Optional[date] = None, apply: bool = False) -> List[Path]:
+    """Delete (or with apply=False only list) superseded snapshots under the reports lock."""
+
+    with locked(reports_root):
+        targets = all_superseded_paths(reports_root, day)
+        if apply:
+            for path in targets:
+                path.unlink()
+    return targets
+
+
 def day_window(day: date) -> Tuple[datetime, datetime]:
     """The natural day in Asia/Shanghai.
 
