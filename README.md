@@ -83,7 +83,7 @@ Work 对象沿着「项目引用 → 事项 → 里程碑 → 待办」组织，
 
 ## 辅助证据
 
-Sessions、Git、DChat 三类证据全部只读来源、只写私有快照，既不改动来源，也不写入 Work。Sessions 适配器只读来源文件；Git 证据只读取显式注册的本地检出，不联系远端；DChat 群聊只在当前有效 `lifeos-project.json` 的 `sources.dchat.groups` 中声明时读取正文。各来源的采集窗口、索引和 JSON 输出以 `lifeos sessions/git/dchat --help` 为准。
+Sessions、Git、DChat 和 Calendar 四类证据全部只读来源、只写私有快照，既不改动来源，也不写入 Work。Sessions 适配器只读来源文件；Git 证据只读取显式注册的本地检出，不联系远端；DChat 群聊只在当前有效 `lifeos-project.json` 的 `sources.dchat.groups` 中声明时读取正文。Calendar 只读日程并保存私有快照，参会情况由本人确认。各来源的采集窗口、索引和 JSON 输出以 `lifeos sessions/git/dchat/calendar --help` 为准。
 
 ## 日报与周期报
 
@@ -97,7 +97,7 @@ Sessions、Git、DChat 三类证据全部只读来源、只写私有快照，既
 
 纯 Python（3.9+），不依赖任何第三方包。命令层是唯一写入口，Work 事实、审计事件与派生视图共用一条链路：互斥锁、校验、临时文件、原子替换、幂等检查、审计追加和视图刷新属于同一次写入，不允许只完成一半。
 
-数据分三处且方向单向：项目静态身份在各项目根的 `lifeos-project.json`，个人 Work 事实与报告在 `~/.local/share/lifeos/`，本机开关与来源路径在 `~/.config/lifeos/`。Sessions、Git、DChat 三类证据只读来源、只写私有快照，不回写 Work。模块划分与安全属性见 [ARCHITECTURE.md](ARCHITECTURE.md)。
+数据分三处且方向单向：项目静态身份在各项目根的 `lifeos-project.json`，个人 Work 事实与报告在 `~/.local/share/lifeos/`，本机开关与来源路径在 `~/.config/lifeos/`。Sessions、Git、DChat 和 Calendar 四类证据只读来源、只写私有快照，不回写 Work。模块划分与安全属性见 [ARCHITECTURE.md](ARCHITECTURE.md)。
 
 ## 配置与数据边界
 
@@ -110,7 +110,7 @@ Sessions、Git、DChat 三类证据全部只读来源、只写私有快照，既
 ## 仓库结构
 
 - [lifeos.py](lifeos.py)：CLI 入口
-- [lifeos_work/](lifeos_work/)、[lifeos_reports/](lifeos_reports/)、[lifeos_sessions/](lifeos_sessions/)、[lifeos_git/](lifeos_git/)、[lifeos_dchat/](lifeos_dchat/)：Work 事实、日报周期报与各证据源模块
+- [lifeos_work/](lifeos_work/)、[lifeos_reports/](lifeos_reports/)、[lifeos_sessions/](lifeos_sessions/)、[lifeos_git/](lifeos_git/)、[lifeos_dchat/](lifeos_dchat/)、[lifeos_calendar/](lifeos_calendar/)：Work 事实、日报周期报与各证据源模块
 - [lifeos_config/](lifeos_config/)、[lifeos_projects/](lifeos_projects/)、[lifeos_web/](lifeos_web/)、[lifeos_mirror/](lifeos_mirror/)：配置、项目发现、只读 Web 工作台与服务器镜像
 - [skills/lifeos/](skills/lifeos/)：唯一通用 Agent Skill 源码
 - [tests/](tests/)：合成 fixture 与回归测试
