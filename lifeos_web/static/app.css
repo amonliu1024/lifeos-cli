@@ -191,14 +191,6 @@ button { color: inherit; }
 }
 .view-count b { color: var(--ink); font-weight: var(--weight-title); }
 
-.eyebrow {
-  margin: 0 0 var(--space-1);
-  color: var(--blue);
-  font: var(--weight-title) var(--text-meta)/var(--line-meta) var(--font-ui);
-  letter-spacing: .12em;
-  text-transform: uppercase;
-}
-
 h1, h2, h3, p { margin-top: 0; }
 
 .segmented {
@@ -269,8 +261,6 @@ h1, h2, h3, p { margin-top: 0; }
   font: var(--text-meta)/var(--line-meta) var(--font-ui);
   letter-spacing: .02em;
 }
-.date-label { color: var(--faint); font: var(--text-meta)/var(--line-meta) var(--font-ui); }
-.project-name { color: var(--muted); font: var(--text-meta)/var(--line-meta) var(--font-ui); }
 
 .state-label {
   display: inline-flex;
@@ -284,7 +274,7 @@ h1, h2, h3, p { margin-top: 0; }
   letter-spacing: .02em;
 }
 
-.report-meta, .detail-meta, .calendar-head, .daily-layout {
+.report-meta, .calendar-head, .daily-layout {
   display: flex;
   align-items: center;
 }
@@ -407,7 +397,6 @@ h1, h2, h3, p { margin-top: 0; }
 .entry-sheet .bullet, .entry-sheet .entry-aside { height: auto; min-height: var(--line-list); }
 .entry-sheet .entry-text { font-size: var(--text-list); line-height: var(--line-list); }
 .entry-sheet .entry-sub { margin-top: 5px; color: var(--muted); font-size: var(--text-note); line-height: var(--line-note); white-space: normal; }
-.entry-sheet .is-insight:not(.is-dropped) .bullet { color: var(--blue); }
 
 .daily-layout {
   align-items: flex-start;
@@ -554,7 +543,7 @@ h1, h2, h3, p { margin-top: 0; }
 #drawer-content { display: flex; height: 100%; flex-direction: column; }
 .drawer-head {
   flex: 0 0 auto;
-  padding: var(--space-12) var(--space-10) var(--space-5);
+  padding: var(--space-6) var(--space-10);
   border-bottom: 1px solid var(--edge);
   background: var(--surface);
 }
@@ -580,8 +569,8 @@ h1, h2, h3, p { margin-top: 0; }
 .drawer-close {
   position: absolute;
   z-index: 2;
-  top: 20px;
-  right: 24px;
+  top: var(--space-6);
+  right: var(--space-6);
   width: 30px;
   height: 30px;
   padding: 0;
@@ -593,8 +582,32 @@ h1, h2, h3, p { margin-top: 0; }
   line-height: 1;
   cursor: pointer;
 }
-.drawer h2 { margin: var(--space-2) 0 var(--space-3); font: var(--weight-title) var(--text-display)/var(--line-display) var(--font-ui); }
-.detail-meta { flex-wrap: wrap; gap: var(--space-2); margin-bottom: 0; }
+/* 头部：记号与记法对齐关闭按钮的中线；正文下方的项目与截止沿用列表右侧的写法。 */
+.detail-kind {
+  display: flex;
+  flex-wrap: wrap;
+  min-height: 30px;
+  align-items: center;
+  gap: var(--space-2);
+  margin: 0 var(--space-8) 0 0;
+  color: var(--muted);
+  font: var(--text-meta)/var(--line-meta) var(--font-ui);
+  letter-spacing: .02em;
+}
+.detail-kind .bullet { width: var(--icon-inline); height: auto; }
+.detail-kind.is-dropped .bullet { color: var(--faint); }
+.drawer h2 { margin: var(--space-3) 0 0; font: var(--weight-title) var(--text-display)/var(--line-display) var(--font-ui); overflow-wrap: anywhere; }
+.drawer h2 .star-mark { margin-left: var(--space-2); }
+.detail-meta {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: var(--space-2) 10px;
+  margin-top: var(--space-3);
+  color: var(--faint);
+  font: var(--text-meta)/var(--line-meta) var(--font-ui);
+}
+.detail-meta .aside-project { max-width: 100%; color: var(--muted); }
 .detail-section { position: relative; margin-top: 0; padding: var(--space-6) 0; }
 .detail-section, .detail-section h3, .detail-section .related-link { text-align: left; }
 .detail-section + .detail-section::before {
@@ -683,7 +696,7 @@ h1, h2, h3, p { margin-top: 0; }
   .calendar-panel { position: static; width: 100%; margin-bottom: var(--space-3); }
   .report-paper { padding: var(--space-6) var(--space-5) var(--space-8); }
   .report-header { align-items: center; }
-  .drawer-head { padding: var(--space-12) var(--space-6) var(--space-4); }
+  .drawer-head { padding: var(--space-6); }
   .drawer-body { padding: 0 var(--space-6) var(--space-8); }
 }
 

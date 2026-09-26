@@ -52,10 +52,6 @@ function stateClass(value) {
   return "";
 }
 
-function entryStatus(entry) {
-  return `<span class="state-label ${stateClass(entry.status)}">${esc(entry.status_label || entry.status)}</span>`;
-}
-
 function status(value) {
   return `<span class="state-label ${stateClass(value)}">${esc(labels[value] || value || "未知")}</span>`;
 }
@@ -392,8 +388,12 @@ function relatedLink(id) {
 function openDetail(id) {
   const item = findRecord(id);
   if (!item) return;
-  const header = `<p class="eyebrow">${esc(kindLabels[item.kind] || "")}</p><h2>${text(item.text)}</h2>
-    <div class="detail-meta"><span class="id-label">${esc(item.id)}</span>${item.project?.name ? `<span class="project-name">${esc(item.project.name)}</span>` : ""}${starMark(item)}${entryStatus(item)}${item.kind === "task" && item.due ? (item.live ? dueMark(item.due) : `<span class="date-label">截止 ${monthDay(item.due)}</span>`) : ""}</div>`;
+  // 头部三行：记号引出记法、状态（默认状态不写）和 ID → 正文 → 与列表右侧同一写法的项目与截止，没有就不出这一行。
+  const kind = `${bullet(item)}<span>${esc(kindLabels[item.kind] || "")}</span>${item.status === "open" ? "" : `<span aria-hidden="true">·</span><span>${esc(item.status_label || item.status)}</span>`}<span class="aside-divider"></span><span class="id-label">${esc(item.id)}</span>`;
+  const project = item.project?.name ? `<span class="aside-project">${svg(ICONS.folder)}<span>${esc(item.project.name)}</span></span>` : "";
+  const due = item.kind === "task" && item.due ? (item.live ? dueMark(item.due) : `<span class="due-mark" title="截止 ${esc(item.due)}">截止 ${monthDay(item.due)}</span>`) : "";
+  const header = `<p class="detail-kind${item.status === "dropped" ? " is-dropped" : ""}">${kind}</p><h2>${text(item.text)}${starMark(item)}</h2>
+    ${project || due ? `<div class="detail-meta">${project}${project && due ? '<span class="aside-divider"></span>' : ""}${due}</div>` : ""}`;
   const noteTitle = {
     done: item.kind === "question" ? "答案" : "完成了什么",
     dropped: item.kind === "insight" ? "为什么退役" : "为什么划掉",
