@@ -65,6 +65,9 @@ class WebProjectionTest(unittest.TestCase):
             }
         )
         self.entries(data).append(done)
+        waiting = copy.deepcopy(self.entries(data)[1])
+        waiting.update({"id": "TASK-20260829-998", "owner": "凯健"})
+        self.entries(data).append(waiting)
         before = copy.deepcopy(data)
 
         snapshot = build_snapshot(tuple(data), self.reports_root, reference_date=date(2026, 8, 30))
@@ -72,6 +75,9 @@ class WebProjectionTest(unittest.TestCase):
         by_id = {item["id"]: item for item in snapshot["entries"]}
         self.assertTrue(by_id["TASK-20260725-001"]["live"])
         self.assertTrue(by_id["TASK-20260725-001"]["current"])
+        self.assertTrue(by_id["TASK-20260725-001"]["mine"])
+        # 等别人的待办也在「在办」里，只是标成不是本人的
+        self.assertEqual((True, False), (by_id["TASK-20260829-998"]["current"], by_id["TASK-20260829-998"]["mine"]))
         self.assertEqual("•", by_id["TASK-20260725-001"]["symbol"])
         self.assertFalse(by_id["TASK-20260829-999"]["live"])
         self.assertIsNone(by_id["TASK-20260829-999"]["rank"])

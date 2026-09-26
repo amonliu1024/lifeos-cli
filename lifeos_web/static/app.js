@@ -9,9 +9,10 @@ const toast = document.querySelector("#toast");
 const state = {
   snapshot: null,
   tab: "work",
-  workMode: "current",
-  logMode: "today",
-  questionMode: "open",
+  workMode: "doing",
+  closedGroup: "month",
+  expanded: null,
+  noteMode: "open",
   insightMode: "active",
   reportDay: null,
   report: null,
@@ -23,7 +24,7 @@ let snapshotRequest = null;
 let lastSnapshotAt = 0;
 let pendingSnapshotRender = false;
 
-const TABS = ["log", "work", "questions", "insights", "daily"];
+const TABS = ["work", "notes", "insights", "daily"];
 
 const labels = {
   draft: "草稿",
@@ -43,21 +44,6 @@ function esc(value) {
 
 function text(value, fallback = "—") {
   return value === null || value === undefined || value === "" ? fallback : esc(value);
-}
-
-function formatDate(value) {
-  if (!value) return "";
-  const date = new Date(value.length === 10 ? `${value}T00:00:00+08:00` : value);
-  if (Number.isNaN(date.getTime())) return esc(value);
-  return new Intl.DateTimeFormat("zh-CN", { month: "2-digit", day: "2-digit" }).format(date);
-}
-
-function formatMoment(value) {
-  if (!value) return "未记录";
-  const date = new Date(value);
-  if (Number.isNaN(date.getTime())) return esc(value);
-  const pad = (number) => String(number).padStart(2, "0");
-  return `${date.getFullYear()}-${pad(date.getMonth() + 1)}-${pad(date.getDate())} ${pad(date.getHours())}:${pad(date.getMinutes())}`;
 }
 
 function stateClass(value) {
@@ -95,10 +81,10 @@ function setTab(tab) {
   render();
 }
 
-function viewHeading(kicker, count, controls = "") {
+function viewHeading(label, count, controls = "") {
   return `<header class="view-heading">
     ${controls}
-    <p class="running-head"><span class="running-title">${esc(kicker)}</span><span class="running-count">${String(count).padStart(2, "0")}</span></p>
+    <p class="view-count">${esc(label)}<b>${count}</b></p>
   </header>`;
 }
 
@@ -112,71 +98,112 @@ function emptyState(message) {
   return `<section class="empty-state"><div class="empty-mark">∿</div><p>${esc(message)}</p></section>`;
 }
 
-function dueIcon(kind) {
-  const body = {
-    normal: `<circle cx="8" cy="8" r="5.5"></circle><path d="M8 5v3.25l2.25 1.25"></path>`,
-    urgent: `<path d="M8 2.5a5.5 5.5 0 1 0 4.7 2.65"></path><path d="M8 5v3.25l2.25 1.25"></path><path d="M10.75 2.25h2.5v2.5"></path>`,
-    overdue: `<circle cx="8" cy="8" r="5.5"></circle><path d="M8 4.75v4"></path><path d="M8 11.25h.01"></path>`,
-    done: `<circle cx="8" cy="8" r="5.5"></circle><path d="m5.25 8 1.8 1.8 3.7-3.7"></path>`,
-    gate: `<path d="M4 13.5V2.75"></path><path d="M4 3h7.5l-1.75 2.75L11.5 8.5H4"></path>`,
-    later: `<path d="M9.5 4 5.5 8l4 4"></path>`,
-    star: `<path d="m8 2.4 1.7 3.5 3.8.5-2.8 2.7.7 3.8L8 11.1l-3.4 1.8.7-3.8-2.8-2.7 3.8-.5Z"></path>`,
-    note: `<path d="M4.5 8.2h7"></path>`,
-    question: `<path d="M6 6.1a2.1 2.1 0 1 1 3 1.9c-.7.4-1 .9-1 1.6v.3"></path><path d="M8 12.2h.01"></path>`,
-    insight: `<path d="M8 3.2v6"></path><path d="M8 12.2h.01"></path>`,
-  }[kind] || "";
-  return `<svg class="due-icon" viewBox="0 0 16 16" fill="none" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true" focusable="false">${body}</svg>`;
+// 子弹笔记的记号：手画的线性 SVG，线条故意不完全规整。完成用对号，排到以后用 <，转成别的用 >。
+const MARKS = {
+  task: `<path class="is-filled" d="M8.3 5.5c1.5.1 2.6 1.3 2.4 2.7-.1 1.4-1.4 2.4-2.8 2.2-1.4-.1-2.4-1.3-2.2-2.7.1-1.3 1.3-2.3 2.6-2.2z"/>`,
+  done: `<path d="M3.6 8.6c1.1.9 2 1.9 2.9 3 1.7-2.8 3.7-5.4 6.1-7.8"/>`,
+  scheduled: `<path d="M10.9 4.2C9 5.6 7.1 6.8 5.1 8.1c1.9 1.3 3.9 2.5 5.8 3.9"/>`,
+  converted: `<path d="M5.1 4.2c1.9 1.4 3.8 2.6 5.8 3.9-1.9 1.3-3.9 2.6-5.8 3.9"/>`,
+  note: `<path d="M4.1 8.4c2.6-.4 5.2-.1 7.8-.5"/>`,
+  question: `<path d="M5.8 6c.1-1.5 1.2-2.4 2.5-2.3 1.3.1 2.3 1.1 2.1 2.4-.2 1-1 1.5-1.7 1.9-.6.4-.9.9-.9 1.7"/><path d="M7.8 12.3h.1"/>`,
+  insight: `<path d="M8.2 3.2c-.2 2.1 0 4.2-.2 6.2"/><path d="M8 12.4h.1"/>`,
+};
+const ICONS = {
+  star: `<path d="M8.1 1.8c.6 1.3 1.2 2.6 1.9 3.9 1.4.1 2.8.3 4.2.6-1 1-2.1 1.9-3.1 2.9.3 1.4.5 2.8.7 4.2L8 11.4c-1.3.7-2.5 1.3-3.8 2 .2-1.4.5-2.8.8-4.2-1-1-2-1.9-3-2.9 1.4-.2 2.8-.4 4.2-.5.6-1.4 1.2-2.7 1.9-4z"/>`,
+  folder: `<path d="M2.4 4.6c0-.7.4-1.1 1.1-1.1h2.8c.5 0 .8.2 1.1.6l.6.9h4.6c.7 0 1.1.4 1.1 1.1v5.8c0 .7-.4 1.1-1.1 1.1H3.5c-.7 0-1.1-.4-1.1-1.1z"/>`,
+  waiting: `<path d="M4.3 2.6c2.5.2 4.9-.1 7.4.1"/><path d="M4.4 13.4c2.4-.2 4.9.1 7.3-.1"/><path d="M5 2.8c.2 2.4 1.5 3.9 3 5.1 1.6-1.3 2.8-2.7 3-5"/><path d="M5.1 13.2c.2-2.3 1.4-3.9 2.9-5.3 1.6 1.4 2.8 2.9 3 5.2"/>`,
+  chevron: `<path d="M5.2 6.3c1 1.1 1.9 2.2 2.9 3.3 1-1.1 1.9-2.2 2.9-3.2"/>`,
+};
+const CLOSED_LABELS = { done: "想通了", converted: "转成了", dropped: "划掉" };
+
+function svg(body) {
+  return `<svg viewBox="0 0 16 16" aria-hidden="true" focusable="false">${body}</svg>`;
 }
 
-function bulletMark(entry) {
-  if (entry.kind === "task") return `<span class="task-dot" aria-hidden="true"></span>`;
-  return `<span class="bullet-mark" title="${esc(kindLabels[entry.kind])}">${dueIcon(entry.kind)}</span>`;
+function markName(entry) {
+  if (["done", "scheduled", "converted"].includes(entry.status)) return entry.status;
+  return entry.kind;
+}
+
+function bullet(entry) {
+  return `<span class="bullet" title="${esc(entry.status_label || kindLabels[entry.kind])}">${svg(MARKS[markName(entry)])}</span>`;
 }
 
 function starMark(entry) {
-  return entry.starred ? `<span class="star-mark" title="重要">${dueIcon("star")}</span>` : "";
+  return entry.starred && entry.live ? `<span class="star-mark" title="重要">${svg(ICONS.star)}</span>` : "";
 }
 
-function dueInfo(value, terminal) {
-  if (!value) return { tone: "none", icon: "normal", label: "无截止", title: "没有截止日期" };
+function monthDay(value) {
+  const [, month, day] = String(value).slice(0, 10).split("-").map(Number);
+  return month && day ? `${month}/${day}` : esc(value);
+}
+
+function monthLabel(value) {
+  const [year, month] = String(value || "").split("-").map(Number);
+  if (!year || !month) return esc(value);
+  return year === new Date().getFullYear() ? `${month} 月` : `${year} 年 ${month} 月`;
+}
+
+function daysUntil(value) {
   const now = new Date();
   const today = new Date(now.getFullYear(), now.getMonth(), now.getDate());
   const due = new Date(`${value}T00:00:00+08:00`);
-  if (Number.isNaN(due.getTime())) return { tone: "later", icon: "normal", label: value, title: value };
-  const days = Math.round((due - today) / 86400000);
-  if (terminal) return { tone: "done", icon: "done", label: formatDate(value), title: `截止 ${value}` };
-  if (days < 0) return { tone: "overdue", icon: "overdue", label: `逾期${Math.abs(days)}天`, title: `已逾期 ${Math.abs(days)} 天 · 截止 ${value}` };
-  if (days === 0) return { tone: "urgent", icon: "urgent", label: "今天到期", title: `今天截止 · ${value}` };
-  if (days <= 3) return { tone: "urgent", icon: "urgent", label: `${days}天后`, title: `${days} 天后截止 · ${value}` };
-  if (days <= 7) return { tone: "later", icon: "normal", label: `${days}天后`, title: `截止 ${value}` };
-  return { tone: "later", icon: "normal", label: formatDate(value), title: `截止 ${value}` };
+  return Number.isNaN(due.getTime()) ? null : Math.round((due - today) / 86400000);
 }
 
-function dueChip(value, terminal, showEmpty = false) {
-  if (!value && !showEmpty) return "";
-  const due = dueInfo(value, terminal);
-  return `<span class="due-chip is-${due.tone}" title="${esc(due.title)}">${dueIcon(due.icon)}<span>${esc(due.label)}</span></span>`;
+// 截止只在有的时候写：普通的灰色日期，快到期的橙色写剩几天，过期的红色写逾期几天；前面的小圆点跟着变色。
+function dueMark(value) {
+  if (!value) return "";
+  const days = daysUntil(value);
+  const title = `截止 ${esc(value)}`;
+  if (days === null) return `<span class="due-mark" title="${title}">${esc(value)}</span>`;
+  if (days < 0) return `<span class="due-mark is-overdue" title="${title}">逾期 ${-days} 天</span>`;
+  if (days === 0) return `<span class="due-mark is-urgent" title="${title}">今天到期</span>`;
+  if (days <= state.snapshot.urgent_window_days) return `<span class="due-mark is-urgent" title="${title}">${days} 天后</span>`;
+  return `<span class="due-mark" title="${title}">${monthDay(value)}</span>`;
 }
 
-function completionChip(entry) {
-  return `<span class="completion-chip" title="完成时间 ${esc(entry.updated_at || "未记录")}">${dueIcon("done")}${esc(formatMoment(entry.updated_at))}</span>`;
+function waitingMark(owner) {
+  return `<span class="waiting-mark">${svg(ICONS.waiting)}等${esc(owner)}</span>`;
 }
 
-function stateChip(entry) {
-  if (entry.kind === "task" && entry.status === "done") return completionChip(entry);
-  if (entry.status === "scheduled") return `<span class="due-chip is-later" title="排到 ${esc(entry.month)}">${dueIcon("later")}<span>${esc(entry.month)}</span></span>`;
-  if (entry.kind === "task" && entry.live) return dueChip(entry.due, false, true);
-  return entryStatus(entry);
+function projectDay(project, day) {
+  const name = project?.name ? `<span class="aside-project">${svg(ICONS.folder)}<span>${esc(project.name)}</span></span><span class="aside-divider"></span>` : "";
+  return `${name}<span>${monthDay(day)}</span>`;
 }
 
-function entryLine(entry, { showProject = false } = {}) {
-  const project = showProject && entry.project?.name ? `<span class="project-name">${esc(entry.project.name)}</span>` : "";
-  const owner = entry.owner ? `<span class="project-name">${esc(entry.owner)}</span>` : "";
-  return `<button class="task-line ${entry.kept ? "" : "is-terminal"}" data-open-id="${esc(entry.id)}">
-    ${bulletMark(entry)}${starMark(entry)}
-    <span class="task-outcome">${text(entry.text)}</span>${owner}${project}
-    ${stateChip(entry)}
+function entryLine(entry, { aside = "", sub = "" } = {}) {
+  const classes = ["entry-line", `is-${entry.kind}`];
+  if (["done", "converted"].includes(entry.status)) classes.push("is-done");
+  if (entry.status === "dropped") classes.push("is-dropped");
+  if (entry.kind === "task" && entry.owner && entry.live) classes.push("is-waiting");
+  return `<button class="${classes.join(" ")}" data-open-id="${esc(entry.id)}">
+    ${bullet(entry)}
+    <span class="entry-body"><span class="entry-text">${esc(entry.text)}</span>${starMark(entry)}${sub ? `<span class="entry-sub">${esc(sub)}</span>` : ""}</span>
+    <span class="entry-aside">${aside}</span>
   </button>`;
+}
+
+function workCard(title, lines, fold = null) {
+  const head = fold
+    ? `<button class="card-sheet fold-toggle" data-fold="${esc(fold.key)}" aria-expanded="${fold.open}"><h2 class="work-title">${esc(title)}</h2><span class="card-summary">${esc(fold.summary)}</span><span class="fold-chevron">${svg(ICONS.chevron)}</span></button>`
+    : `<div class="card-sheet"><h2 class="work-title">${esc(title)}</h2></div>`;
+  const body = !fold || fold.open ? `<div class="entry-lines">${lines.join("")}</div>` : "";
+  return `<article class="work-card${fold && !fold.open ? " is-folded" : ""}">${head}${body}</article>`;
+}
+
+function groupBy(items, keyOf) {
+  const groups = new Map();
+  items.forEach((item) => {
+    const key = keyOf(item);
+    if (!groups.has(key)) groups.set(key, []);
+    groups.get(key).push(item);
+  });
+  return groups;
+}
+
+function projectTitle(task) {
+  return task.project?.name || "不归项目";
 }
 
 function momentValue(value) {
@@ -184,74 +211,59 @@ function momentValue(value) {
   return Number.isNaN(parsed) ? 0 : parsed;
 }
 
-function tasksFor(mode) {
-  const tasks = state.snapshot.entries.filter((entry) => entry.kind === "task");
-  if (mode === "current") return tasks.filter((task) => task.current).sort((left, right) => left.rank - right.rank);
-  if (mode === "others") return tasks.filter((task) => task.status === "open" && task.owner).sort((left, right) => left.rank - right.rank);
-  if (mode === "later") return tasks.filter((task) => task.status === "scheduled" && !task.current)
-    .sort((left, right) => String(left.month).localeCompare(String(right.month)));
-  return tasks.filter((task) => task.status === "done").sort((left, right) => momentValue(right.updated_at) - momentValue(left.updated_at));
+// 在办：自己的按简报的重要紧急顺序排在前，等别人的跟在同一个项目的最后；项目按组里最靠前的那条排。
+function doingCards(tasks) {
+  const doing = tasks.filter((task) => task.current)
+    .sort((left, right) => Number(!left.mine) - Number(!right.mine) || left.rank - right.rank);
+  const groups = [...groupBy(doing, (task) => task.project?.key || "").entries()].map(([key, members]) => ({
+    key,
+    members,
+    order: Math.min(...members.map((task) => (task.mine ? task.rank : task.rank + doing.length))),
+  })).sort((left, right) => Number(left.key === "") - Number(right.key === "") || left.order - right.order);
+  return groups.map(({ members }) => workCard(projectTitle(members[0]), members.map((task) => entryLine(task, {
+    aside: task.mine ? dueMark(task.due) : waitingMark(task.owner),
+  }))));
 }
 
-function groupByProject(tasks) {
-  const groups = new Map();
-  tasks.forEach((task) => {
-    const key = task.project?.key || "";
-    if (!groups.has(key)) groups.set(key, { project: task.project, tasks: [] });
-    groups.get(key).tasks.push(task);
+function laterCards(tasks) {
+  const later = tasks.filter((task) => task.status === "scheduled" && !task.current)
+    .sort((left, right) => String(left.month).localeCompare(String(right.month)));
+  return [...groupBy(later, (task) => task.project?.key || "").values()]
+    .map((members) => workCard(projectTitle(members[0]), members.map((task) => entryLine(task, { aside: monthLabel(task.month) }))));
+}
+
+// 已结束：完成和划掉放在一起，按时间（了结的月份）或按项目分组；默认只展开最近的一组。
+function closedCards(tasks) {
+  const closed = tasks.filter((task) => ["done", "dropped"].includes(task.status))
+    .sort((left, right) => momentValue(right.updated_at) - momentValue(left.updated_at));
+  const byMonth = state.closedGroup === "month";
+  const groups = groupBy(closed, (task) => (byMonth ? String(task.updated_at).slice(0, 7) : projectTitle(task)));
+  if (!state.expanded) state.expanded = new Set([...groups.keys()].slice(0, 1));
+  return [...groups.entries()].map(([key, members]) => {
+    const done = members.filter((task) => task.status === "done").length;
+    const dropped = members.length - done;
+    const [year, month] = key.split("-");
+    return workCard(byMonth ? `${year} 年 ${Number(month)} 月` : key, members.map((task) => entryLine(task, {
+      aside: byMonth ? projectDay(task.project, task.updated_at) : `<span>${monthDay(task.updated_at)}</span>`,
+      sub: task.status === "dropped" && task.note ? `划掉：${task.note}` : "",
+    })), { key, open: state.expanded.has(key), summary: `完成 ${done}${dropped ? ` · 划掉 ${dropped}` : ""}` });
   });
-  return [...groups.values()];
 }
 
 function renderWork() {
-  const tasks = tasksFor(state.workMode);
-  const groups = groupByProject(tasks);
-  const cards = groups.map((group) => {
-    const title = group.project?.name || "不归项目";
-    const id = group.project?.key ? `<span class="id-label">${esc(group.project.key)}</span>` : "";
-    return `<article class="work-card">
-      <div class="card-sheet">
-        <div class="work-topline"><h2 class="work-title">${esc(title)}</h2>${id}</div>
-      </div>
-      <div class="task-lines">${group.tasks.map((task) => entryLine(task)).join("")}</div>
-    </article>`;
-  }).join("");
-  const empty = {
-    current: "现在没有进行中的待办。",
-    others: "没有在等别人的事。",
-    later: "没有排到以后的待办。",
-    done: "还没有完成记录。",
-  }[state.workMode];
-  app.innerHTML = `${viewHeading("TODO / FOCUS", tasks.length, segmented("work", state.workMode, [["current", "当前"], ["others", "等别人"], ["later", "排到以后"], ["done", "已完成"]]))}
-    ${tasks.length ? `<section class="work-list">${cards}</section>` : emptyState(empty)}`;
-}
-
-function dayLabel(day) {
-  const date = new Date(`${day}T00:00:00+08:00`);
-  if (Number.isNaN(date.getTime())) return esc(day);
-  const weekday = "日一二三四五六"[date.getDay()];
-  return `${date.getMonth() + 1}月${date.getDate()}日 周${weekday}`;
-}
-
-function renderLog() {
-  const reference = state.snapshot.reference_date;
-  const start = new Date(`${reference}T00:00:00+08:00`);
-  start.setDate(start.getDate() - 6);
-  const earliest = `${start.getFullYear()}-${String(start.getMonth() + 1).padStart(2, "0")}-${String(start.getDate()).padStart(2, "0")}`;
-  const entries = state.snapshot.entries.filter((entry) => (
-    state.logMode === "today" ? entry.logged_on === reference : entry.logged_on >= earliest && entry.logged_on <= reference
-  ));
-  const days = new Map();
-  entries.forEach((entry) => {
-    if (!days.has(entry.logged_on)) days.set(entry.logged_on, []);
-    days.get(entry.logged_on).push(entry);
-  });
-  const cards = [...days.entries()].map(([day, members]) => `<article class="work-card">
-    <div class="card-sheet"><div class="work-topline"><h2 class="work-title">${dayLabel(day)}</h2></div></div>
-    <div class="task-lines">${members.map((entry) => entryLine(entry, { showProject: true })).join("")}</div>
-  </article>`).join("");
-  app.innerHTML = `${viewHeading("LOG / TODAY", entries.length, segmented("log", state.logMode, [["today", "今天"], ["week", "最近 7 天"]]))}
-    ${entries.length ? `<section class="work-list">${cards}</section>` : emptyState(state.logMode === "today" ? "今天还没有记下什么。" : "最近 7 天没有记录。")}`;
+  const tasks = state.snapshot.entries.filter((entry) => entry.kind === "task");
+  const mode = state.workMode;
+  const cards = { doing: doingCards, later: laterCards, closed: closedCards }[mode](tasks);
+  const count = {
+    doing: tasks.filter((task) => task.current).length,
+    later: tasks.filter((task) => task.status === "scheduled" && !task.current).length,
+    closed: tasks.filter((task) => ["done", "dropped"].includes(task.status)).length,
+  }[mode];
+  const empty = { doing: "现在没有在办的待办。", later: "没有排到以后的待办。", closed: "还没有结束的待办。" }[mode];
+  const controls = segmented("work", mode, [["doing", "在办"], ["later", "以后"], ["closed", "已结束"]])
+    + (mode === "closed" ? `<span class="heading-divider"></span>${segmented("closed", state.closedGroup, [["month", "按时间"], ["project", "按项目"]])}` : "");
+  app.innerHTML = `${viewHeading({ doing: "在办", later: "以后", closed: "已结束" }[mode], count, controls)}
+    ${cards.length ? `<section class="work-list">${cards.join("")}</section>` : emptyState(empty)}`;
 }
 
 function reportMap() {
@@ -310,7 +322,7 @@ function markdown(value) {
 function renderDaily() {
   const reports = state.snapshot.reports;
   if (!reports.length) {
-    app.innerHTML = `${viewHeading("DAILY / LOG", 0)}${emptyState("还没有可展示的日报。")}`;
+    app.innerHTML = `${viewHeading("日报", 0)}${emptyState("还没有可展示的日报。")}`;
     return;
   }
   const report = state.report;
@@ -318,39 +330,47 @@ function renderDaily() {
     <header class="report-header"><div><h2 class="report-date">${esc(report.day)}</h2><div class="report-meta">${status(report.status)}<span>${esc(report.counts.activities)} activities</span><span>·</span><span>${esc(report.counts.work_events)} work events</span></div></div>${state.snapshot?.published ? "" : '<button class="open-source" data-action="open-report">打开原文 ↗</button>'}</header>
     <div class="report-body">${markdown(report.body)}</div>
   </article>` : `<article class="report-paper report-skeleton" aria-label="正在读取日报"><span class="skeleton skeleton-report-date"></span><span class="skeleton skeleton-report-line"></span><span class="skeleton skeleton-report-line is-short"></span><span class="skeleton skeleton-report-line"></span></article>`;
-  app.innerHTML = `${viewHeading("DAILY / LOG", reports.length)}
+  app.innerHTML = `${viewHeading("日报", reports.length)}
     <section class="daily-layout">${calendarMarkup()}${paper}</section>`;
 }
 
-function entryCard(entry, description, className) {
-  return `<button class="${className}" data-open-id="${esc(entry.id)}">
-    <span class="card-sheet"><span class="card-heading">${text(entry.text)}</span><span class="card-description">${text(description)}</span></span>
-    <span class="idea-meta">${starMark(entry)}<span class="date-label">${esc(entry.logged_on || "")}</span>${entry.project?.name ? `<span class="project-name">${esc(entry.project.name)}</span>` : ""}</span>
-  </button>`;
+function closedNote(entry) {
+  if (entry.status === "converted" && entry.ref) {
+    const target = findRecord(entry.ref);
+    return `${CLOSED_LABELS.converted}：${target ? target.text : entry.ref}`;
+  }
+  const label = entry.kind === "insight" ? "退役" : CLOSED_LABELS[entry.status] || entry.status_label;
+  return entry.note ? `${label}：${entry.note}` : "";
 }
 
-function renderQuestions() {
-  const open = state.questionMode === "open";
-  const questions = state.snapshot.entries.filter((entry) => entry.kind === "question" && (open ? entry.status === "open" : entry.status !== "open"))
-    .sort((left, right) => (open ? Number(right.starred) - Number(left.starred) : 0));
-  const cards = questions.map((entry) => entryCard(entry, open ? entry.context || "还没有补充背景" : entry.note || entry.status_label, "idea-card")).join("");
-  app.innerHTML = `${viewHeading("QUESTIONS / OPEN", questions.length, segmented("questions", state.questionMode, [["open", "没想通"], ["closed", "已了结"]]))}
-    ${questions.length ? `<section class="card-grid">${cards}</section>` : emptyState(open ? "眼下没有没想通的问题。" : "还没有了结的问题。")}`;
+// 随记和疑问是一套东西：不套卡片，整张列表写在一块内凹的托盘里。
+function renderNotes() {
+  const open = state.noteMode === "open";
+  const items = state.snapshot.entries
+    .filter((entry) => ["note", "question"].includes(entry.kind) && (open ? entry.status === "open" : entry.status !== "open"))
+    .sort((left, right) => (open
+      ? Number(right.starred) - Number(left.starred) || momentValue(right.created_at) - momentValue(left.created_at)
+      : momentValue(right.updated_at) - momentValue(left.updated_at)));
+  const lines = items.map((entry) => entryLine(entry, {
+    aside: projectDay(entry.project, open ? entry.logged_on : entry.updated_at),
+    sub: open ? entry.context || "" : closedNote(entry),
+  }));
+  app.innerHTML = `${viewHeading(open ? "开着" : "已了结", items.length, segmented("notes", state.noteMode, [["open", "开着"], ["closed", "已了结"]]))}
+    ${items.length ? `<section class="entry-sheet">${lines.join("")}</section>` : emptyState(open ? "没有还开着的随记和疑问。" : "还没有了结的随记和疑问。")}`;
 }
 
 function renderInsights() {
   const active = state.insightMode === "active";
-  const insights = state.snapshot.entries.filter((entry) => entry.kind === "insight" && ((entry.status === "open") === active));
-  const cards = insights.map((entry) => entryCard(entry, entry.context, "achievement-card")).join("");
-  app.innerHTML = `${viewHeading("INSIGHTS / KEPT", insights.length, segmented("insights", state.insightMode, [["active", "有效"], ["history", "历史"]]))}
-    ${insights.length ? `<section class="card-grid">${cards}</section>` : emptyState(active ? "还没有留下的洞见。" : "没有被推翻或退役的洞见。")}`;
+  const items = state.snapshot.entries.filter((entry) => entry.kind === "insight" && ((entry.status === "open") === active));
+  const lines = items.map((entry) => entryLine(entry, { sub: active ? entry.context || "" : closedNote(entry) }));
+  app.innerHTML = `${viewHeading(active ? "留着" : "退役", items.length, segmented("insights", state.insightMode, [["active", "留着的"], ["history", "退役的"]]))}
+    ${items.length ? `<section class="entry-sheet">${lines.join("")}</section>` : emptyState(active ? "还没有留下的洞见。" : "没有退役的洞见。")}`;
 }
 
 function render() {
   if (!state.snapshot) return;
   if (state.tab === "daily") renderDaily();
-  else if (state.tab === "log") renderLog();
-  else if (state.tab === "questions") renderQuestions();
+  else if (state.tab === "notes") renderNotes();
   else if (state.tab === "insights") renderInsights();
   else renderWork();
 }
@@ -373,7 +393,7 @@ function openDetail(id) {
   const item = findRecord(id);
   if (!item) return;
   const header = `<p class="eyebrow">${esc(kindLabels[item.kind] || "")}</p><h2>${text(item.text)}</h2>
-    <div class="detail-meta"><span class="id-label">${esc(item.id)}</span>${item.project?.name ? `<span class="project-name">${esc(item.project.name)}</span>` : ""}${starMark(item)}${entryStatus(item)}${item.kind === "task" && item.due ? dueChip(item.due, !item.live) : ""}</div>`;
+    <div class="detail-meta"><span class="id-label">${esc(item.id)}</span>${item.project?.name ? `<span class="project-name">${esc(item.project.name)}</span>` : ""}${starMark(item)}${entryStatus(item)}${item.kind === "task" && item.due ? (item.live ? dueMark(item.due) : `<span class="date-label">截止 ${monthDay(item.due)}</span>`) : ""}</div>`;
   const noteTitle = {
     done: item.kind === "question" ? "答案" : "完成了什么",
     dropped: item.kind === "insight" ? "为什么退役" : "为什么划掉",
@@ -471,9 +491,16 @@ document.addEventListener("click", (event) => {
   if (mode) {
     const group = mode.dataset.modeGroup;
     if (group === "work") state.workMode = mode.dataset.mode;
-    if (group === "log") state.logMode = mode.dataset.mode;
-    if (group === "questions") state.questionMode = mode.dataset.mode;
+    if (group === "closed") { state.closedGroup = mode.dataset.mode; state.expanded = null; }
+    if (group === "notes") state.noteMode = mode.dataset.mode;
     if (group === "insights") state.insightMode = mode.dataset.mode;
+    render(); return;
+  }
+  const fold = event.target.closest("[data-fold]");
+  if (fold) {
+    const key = fold.dataset.fold;
+    if (state.expanded.has(key)) state.expanded.delete(key);
+    else state.expanded.add(key);
     render(); return;
   }
   const open = event.target.closest("[data-open-id]");

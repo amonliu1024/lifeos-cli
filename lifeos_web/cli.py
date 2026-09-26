@@ -54,7 +54,7 @@ def register_web_parser(domains: argparse._SubParsersAction, data_dir: Path) -> 
         "web",
         help="启动只读本地 Web 工作台",
         description=(
-            "在本机回环地址启动只读 Web 工作台，展示工作、日报、闪念与成果。"
+            "在本机回环地址启动只读 Web 工作台，展示待办、随记、洞见与日报。"
             "它不提供 Agent、编辑或状态流转能力。"
         ),
         epilog=(

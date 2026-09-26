@@ -35,9 +35,9 @@ Work 按天记下的每一笔只有四种，外加项目引用和实体名词：
 
 | 记法 | 状态（CLI 值 → 叫法） | 用哪个命令 |
 |---|---|---|
-| 待办 | `open` 待做 · `scheduled` 排到以后 `<` · `done` 完成 `×` · `dropped` 划掉 | `task-done --note`、`task-schedule --month`、`entry-drop --note`；排到以后的用 `entry-update --reopen` 取回 |
+| 待办 | `open` 待做 · `scheduled` 排到以后 `<` · `done` 完成 `✓` · `dropped` 划掉 | `task-done --note`、`task-schedule --month`、`entry-drop --note`；排到以后的用 `entry-update --reopen` 取回 |
 | 随记 | `open` 记着 · `converted` 转成别的 `>` · `dropped` 划掉 | 转化用新一笔 add 命令的 `--from`；`entry-drop --note` |
-| 疑问 | `open` 没想通 · `done` 想通了 `×` · `converted` 转成别的 `>` · `dropped` 划掉 | `question-answer --note [--by INS]`，或 `insight-add --answers`；`--from`；`entry-drop` |
+| 疑问 | `open` 没想通 · `done` 想通了 `✓` · `converted` 转成别的 `>` · `dropped` 划掉 | `question-answer --note [--by INS]`，或 `insight-add --answers`；`--from`；`entry-drop` |
 | 洞见 | `open` 有效 · `dropped` 退役 | 写成规则后 `entry-update --note "写进了哪里"`；被推翻或不再成立用 `entry-drop --note [--by 新洞见]` |
 
 - **必须写 `note` 的：** 待办完成或划掉、随记划掉、疑问想通或划掉、洞见退役。

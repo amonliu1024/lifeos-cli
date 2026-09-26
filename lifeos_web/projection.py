@@ -7,7 +7,7 @@ from pathlib import Path
 from typing import Any
 
 from lifeos_reports import store as report_store
-from lifeos_work.config import ENTRY_SYMBOLS, status_label
+from lifeos_work.config import ENTRY_SYMBOLS, URGENT_WINDOW_DAYS, status_label
 from lifeos_work.model import (
     is_kept,
     is_live,
@@ -58,8 +58,9 @@ def _entry_projection(
         "updated_at": entry.get("updated_at"),
         "live": is_live(entry),
         "kept": is_kept(entry),
-        "current": current and mine,
-        "quadrant": task_quadrant(entry, reference_date) if current and mine else None,
+        "mine": mine,
+        "current": current,
+        "quadrant": task_quadrant(entry, reference_date) if current else None,
     }
 
 
@@ -135,6 +136,7 @@ def build_snapshot(
     return {
         "updated_at": entries_data.get("updated_at"),
         "reference_date": reference_date.isoformat(),
+        "urgent_window_days": URGENT_WINDOW_DAYS,
         "entries": entries,
         "reports": _report_index(reports_root),
     }
