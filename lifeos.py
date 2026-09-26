@@ -4,7 +4,7 @@
 from lifeos_modules import main
 
 
-VERSION = "2.0.0"
+VERSION = "2.0.1"
 
 
 def cli() -> None:
