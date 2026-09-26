@@ -15,21 +15,85 @@ DATA_DIR = Path(
     os.environ.get("LIFEOS_HOME", Path.home() / ".local" / "share" / "lifeos")
 ).expanduser()
 PROJECTS_PATH = DATA_DIR / "projects.json"
-WORK_ITEMS_PATH = DATA_DIR / "work-items.json"
-TASKS_PATH = DATA_DIR / "tasks.json"
+ENTRIES_PATH = DATA_DIR / "entries.json"
+GLOSSARY_PATH = DATA_DIR / "glossary.json"
 EVENTS_PATH = DATA_DIR / "events.jsonl"
 NOW_PATH = DATA_DIR / "now.md"
 PROJECTS_VIEW_PATH = DATA_DIR / "projects.md"
-GLOSSARY_PATH = DATA_DIR / "glossary.json"
 GLOSSARY_VIEW_PATH = DATA_DIR / "glossary.md"
-IDEAS_PATH = DATA_DIR / "ideas.json"
-IDEAS_VIEW_PATH = DATA_DIR / "ideas.md"
-ACHIEVEMENTS_PATH = DATA_DIR / "achievements.json"
-ACHIEVEMENTS_VIEW_PATH = DATA_DIR / "achievements.md"
-WORK_ITEMS_VIEW_PATH = DATA_DIR / "work-items.md"
+INSIGHTS_VIEW_PATH = DATA_DIR / "insights.md"
 LOCK_PATH = DATA_DIR / ".lifeos.lock"
 
-TASK_STATUSES = {"active", "waiting", "paused", "completed", "cancelled"}
+# 子弹笔记的四种记法，每记一条算「一笔」：• 待办、– 随记、? 疑问、! 洞见。
+ENTRY_KINDS = ("task", "note", "question", "insight")
+ENTRY_SYMBOLS = {"task": "•", "note": "–", "question": "?", "insight": "!"}
+ENTRY_KIND_LABELS = {
+    "task": "待办",
+    "note": "随记",
+    "question": "疑问",
+    "insight": "洞见",
+}
+ENTRY_ID_PREFIXES = {"task": "TASK", "note": "NOTE", "question": "ASK", "insight": "INS"}
+
+# 底层只有一套状态值，每种记法用其中几个，界面上各用自己的叫法。
+ENTRY_STATUS_VALUES = ("open", "scheduled", "done", "converted", "dropped")
+ENTRY_STATUSES = {
+    "task": {"open", "scheduled", "done", "dropped"},
+    "note": {"open", "converted", "dropped"},
+    "question": {"open", "done", "converted", "dropped"},
+    "insight": {"open", "dropped"},
+}
+ENTRY_STATUS_LABELS = {
+    "task": {"open": "待做", "scheduled": "排到以后", "done": "完成", "dropped": "划掉"},
+    "note": {"open": "记着", "converted": "转成别的", "dropped": "划掉"},
+    "question": {"open": "没想通", "done": "想通了", "converted": "转成别的", "dropped": "划掉"},
+    "insight": {"open": "有效", "dropped": "退役"},
+}
+# 进入这些状态时必须写 note（一句批注）或 ref（指向另一笔）。
+NOTE_REQUIRED = {
+    "task": {"done", "dropped"},
+    "note": {"dropped"},
+    "question": {"done", "dropped"},
+    "insight": {"dropped"},
+}
+REF_ALLOWED = {
+    "task": set(),
+    "note": {"converted"},
+    "question": {"converted", "done"},
+    "insight": {"dropped"},
+}
+REF_REQUIRED = {"converted"}
+# 月初盘点只看这几种记法里还没了结的。
+REVIEWED_KINDS = {"task", "note", "question"}
+# 转化 `>` 只从还没落地的记录出发。
+CONVERTIBLE_KINDS = {"note", "question"}
+STARRABLE_KINDS = {"task", "question"}
+
+# 字段顺序即写入 entries.json 的顺序；集合形式供校验使用。
+ENTRY_COMMON_FIELD_ORDER = ("id", "kind", "text", "project", "status", "note", "ref")
+ENTRY_TRAILING_FIELD_ORDER = ("context", "created_at", "updated_at")
+ENTRY_KIND_FIELD_ORDER = {
+    "task": ("starred", "owner", "due", "month"),
+    "note": (),
+    "question": ("starred",),
+    "insight": (),
+}
+ENTRY_COMMON_FIELDS = set(ENTRY_COMMON_FIELD_ORDER) | set(ENTRY_TRAILING_FIELD_ORDER)
+ENTRY_KIND_FIELDS = {kind: set(fields) for kind, fields in ENTRY_KIND_FIELD_ORDER.items()}
+
+
+def entry_field_order(kind):
+    return (
+        *ENTRY_COMMON_FIELD_ORDER,
+        *ENTRY_KIND_FIELD_ORDER[kind],
+        *ENTRY_TRAILING_FIELD_ORDER,
+    )
+
+
+def status_label(kind, status):
+    return ENTRY_STATUS_LABELS.get(kind, {}).get(status, status)
+
+
 SCHEDULE_REASON_CODES = {
     "external_change",
     "priority_changed",
@@ -39,25 +103,7 @@ SCHEDULE_REASON_CODES = {
     "self_delay",
     "date_correction",
 }
-WORK_ITEM_STATES = {"active", "waiting", "needs_confirmation", "paused", "closed"}
-MILESTONE_STATUSES = {
-    "planned",
-    "current",
-    "completed",
-    "cancelled",
-}
-MILESTONE_DECISIONS = {"continue", "adjust", "pause", "close"}
-MILESTONE_TERMINAL_STATUSES = {"completed", "cancelled"}
-MILESTONE_TRANSITIONS = {
-    "planned": {"current", "cancelled"},
-    "current": {"completed", "cancelled"},
-    "completed": set(),
-    "cancelled": set(),
-}
 PROJECT_TRACKING_STATES = {"active", "paused", "archived"}
-IDEA_STATUSES = {"inbox", "incubating", "promoted", "archived"}
-ACHIEVEMENT_LIFECYCLES = {"current", "superseded", "archived"}
-ACHIEVEMENT_RELATIONS = {"origin", "contribution", "validation", "revision"}
 ENTITY_KINDS = {"self", "person", "organization", "project", "system", "concept"}
 ENTITY_KIND_LABELS = {
     "self": "本人",
@@ -67,81 +113,25 @@ ENTITY_KIND_LABELS = {
     "system": "系统",
     "concept": "概念",
 }
-VALUE_TYPES = {
-    "business": "业务价值",
-    "capability": "能力提升",
-    "relationship": "人脉积累",
-    "reportable": "可汇报成果",
-    "efficiency": "效率提升",
-    "risk_reduction": "风险降低",
-    "other": "其他价值",
-}
 
-CURRENT_SCHEMA_VERSION = 1
-PROJECTS_SCHEMA_VERSION = 2
-CURRENT_SCHEMA_VERSIONS = {
-    "projects.json": PROJECTS_SCHEMA_VERSION,
-    "work-items.json": CURRENT_SCHEMA_VERSION,
-    "tasks.json": CURRENT_SCHEMA_VERSION,
-    "glossary.json": CURRENT_SCHEMA_VERSION,
-    "ideas.json": CURRENT_SCHEMA_VERSION,
-    "achievements.json": CURRENT_SCHEMA_VERSION,
-}
+# Work 事实文件不带 schema 版本：是否需要迁移看 v1 文件在不在，结构对不对靠逐字段校验。
 CURRENT_TOP_LEVEL_FIELDS = {
-    "projects.json": {"schema_version", "updated_at", "projects"},
-    "work-items.json": {"schema_version", "updated_at", "work_items"},
-    "tasks.json": {"schema_version", "updated_at", "tasks"},
-    "glossary.json": {"schema_version", "updated_at", "terms"},
-    "ideas.json": {"schema_version", "updated_at", "ideas"},
-    "achievements.json": {"schema_version", "updated_at", "achievements"},
+    "projects.json": {"updated_at", "projects"},
+    "entries.json": {"updated_at", "entries"},
+    "glossary.json": {"updated_at", "terms"},
 }
-CURRENT_OBJECT_FIELDS = {
-    "项目引用": {
-        "id", "project_key", "tracking_state",
-        "status_reason", "created_at", "updated_at",
-    },
-    "事项": {
-        "id", "title", "project_id", "state", "status_reason", "stage",
-        "context", "next_gate", "milestones", "sources", "created_at", "updated_at",
-    },
-    "待办": {
-        "id", "outcome", "work_item_id", "project_id", "milestone_id",
-        "status", "status_reason", "responsible_party", "next_action", "due_at",
-        "why", "completion_criteria", "context", "completion", "sources",
-        "created_at", "updated_at", "closed_at",
-    },
-    "实体名词": {
-        "id", "name", "kind", "aliases", "description", "related_items",
-        "sources", "confirmed_at",
-    },
-    "闪念": {
-        "id", "text", "status", "context", "status_reason", "sources",
-        "promoted_to", "created_at", "updated_at",
-    },
-    "成果胶囊": {
-        "id", "title", "task_links", "context", "outcome",
-        "key_learnings", "reuse", "lifecycle", "status_reason",
-        "superseded_by", "sources", "created_at", "updated_at",
-    },
+PROJECT_FIELDS = {"project_key", "tracking_state", "status_reason", "updated_at"}
+TERM_FIELDS = {
+    "id", "name", "kind", "aliases", "description", "sources", "confirmed_at",
 }
-CURRENT_COMPLETION_FIELDS = {"summary", "sources", "values", "reflections"}
-CURRENT_VALUE_FIELDS = {"type", "statement"}
-CURRENT_ACTOR_FIELDS = {"kind", "name"}
 CURRENT_SOURCE_FIELDS = {"kind", "location", "label", "section", "observed_at"}
-CURRENT_NEXT_ACTION_FIELDS = {"text"}
-CURRENT_RESPONSIBLE_PARTY_FIELDS = {"kind", "name", "entity_id"}
 SELF_ENTITY_ID = "ENT-SELF"
-CURRENT_ACHIEVEMENT_LINK_FIELDS = {"task_id", "relation", "contribution"}
-CURRENT_MILESTONE_FIELDS = {
-    "id", "title", "status", "outcome", "completion_criteria", "target_at",
-    "completion", "decision", "created_at", "updated_at", "completed_at",
-}
-MILESTONE_STATUS_LABELS = {
-    "planned": "计划中",
-    "current": "当前阶段",
-    "completed": "已完成",
-    "cancelled": "已取消",
-}
 
-BRIEF_WINDOW_DAYS = 5
-__all__ = [name for name in globals() if name.isupper()]
+# 紧急：已过截止或 7 天内到期；这个窗口同时决定简报里相对日期的写法。
+URGENT_WINDOW_DAYS = 7
+# 月初盘点：进行中的一笔超过这么多天没有变化就要给去向。
+STALE_DAYS = 30
+__all__ = [name for name in globals() if name.isupper()] + [
+    "entry_field_order",
+    "status_label",
+]

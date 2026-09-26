@@ -85,10 +85,7 @@ class MirrorCLITest(unittest.TestCase):
 
         data = self.capture / "data"
         self.assertEqual(
-            {
-                "projects.json", "work-items.json", "tasks.json", "events.jsonl",
-                "glossary.json", "ideas.json", "achievements.json", "reports",
-            },
+            {"projects.json", "entries.json", "events.jsonl", "glossary.json", "reports"},
             {path.name for path in data.iterdir()},
         )
         self.assertEqual(
@@ -106,7 +103,7 @@ class MirrorCLITest(unittest.TestCase):
         self.assertFalse(
             [item for item in captured if any(
                 part in item for part in ("dchat", "sessions", "git", "backups", "config", ".md.")
-            ) or item.endswith(("now.md", "projects.md", "tasks.md"))]
+            ) or item.endswith(("now.md", "projects.md", "insights.md"))]
         )
         modes = {oct(path.stat().st_mode & 0o777) for path in data.rglob("*") if path.is_file()}
         self.assertEqual({"0o600"}, modes)

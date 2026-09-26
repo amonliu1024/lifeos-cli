@@ -1,38 +1,31 @@
 """Pure current-schema ledger and audit-event validation.
 
 This module deliberately has no Runtime or command dependencies.  Callers
-provide the complete current snapshot and event history; validation returns
-the same ordered list of errors used by the monolithic CLI implementation.
+provide the complete current snapshot and event history; validation returns an
+ordered list of errors.
 """
 
 import re
 from datetime import date
 
 from .config import (
-    ACHIEVEMENT_LIFECYCLES,
-    ACHIEVEMENT_RELATIONS,
-    CURRENT_ACHIEVEMENT_LINK_FIELDS,
-    CURRENT_COMPLETION_FIELDS,
-    CURRENT_MILESTONE_FIELDS,
-    CURRENT_NEXT_ACTION_FIELDS,
-    CURRENT_OBJECT_FIELDS,
-    CURRENT_RESPONSIBLE_PARTY_FIELDS,
-    CURRENT_SCHEMA_VERSION,
-    CURRENT_SCHEMA_VERSIONS,
     CURRENT_SOURCE_FIELDS,
     CURRENT_TOP_LEVEL_FIELDS,
-    CURRENT_VALUE_FIELDS,
     ENTITY_KINDS,
-    IDEA_STATUSES,
-    MILESTONE_STATUSES,
+    ENTRY_ID_PREFIXES,
+    ENTRY_KINDS,
+    ENTRY_STATUSES,
+    NOTE_REQUIRED,
+    PROJECT_FIELDS,
     PROJECT_TRACKING_STATES,
+    REF_ALLOWED,
+    REF_REQUIRED,
     SCHEDULE_REASON_CODES,
     SELF_ENTITY_ID,
-    TASK_STATUSES,
-    VALUE_TYPES,
-    WORK_ITEM_STATES,
+    TERM_FIELDS,
+    entry_field_order,
 )
-from .model import milestone_list, schedule_change
+from .model import schedule_change
 
 
 def valid_date_field(item_id, field, value, errors):
@@ -44,33 +37,21 @@ def valid_date_field(item_id, field, value, errors):
         errors.append(f"{item_id} {field} 日期非法：{value}")
 
 
-def current_data_errors(
-    projects_data,
-    work_items_data,
-    tasks_data,
-    glossary_data,
-    ideas_data,
-    achievements_data,
-    events,
-    expected_schema_versions=None,
-):
+def _text(value):
+    return isinstance(value, str) and bool(value.strip())
+
+
+def current_data_errors(projects_data, entries_data, glossary_data, events):
     errors = []
-    expected_versions = expected_schema_versions or CURRENT_SCHEMA_VERSIONS
     collections = [
         ("projects.json", projects_data, "projects"),
-        ("work-items.json", work_items_data, "work_items"),
-        ("tasks.json", tasks_data, "tasks"),
+        ("entries.json", entries_data, "entries"),
         ("glossary.json", glossary_data, "terms"),
-        ("ideas.json", ideas_data, "ideas"),
-        ("achievements.json", achievements_data, "achievements"),
     ]
     for filename, data, array_name in collections:
         if not isinstance(data, dict):
             errors.append(f"{filename} 必须为对象")
             continue
-        expected_version = expected_versions[filename]
-        if data.get("schema_version") != expected_version:
-            errors.append(f"{filename} schema_version 必须为 {expected_version}")
         unknown = sorted(set(data) - CURRENT_TOP_LEVEL_FIELDS[filename])
         if unknown:
             errors.append(f"{filename} 包含非当前字段：{', '.join(unknown)}")
@@ -80,15 +61,8 @@ def current_data_errors(
         return errors
 
     projects = projects_data["projects"]
-    work_items = work_items_data["work_items"]
-    tasks = tasks_data["tasks"]
+    entries = entries_data["entries"]
     terms = glossary_data["terms"]
-    ideas = ideas_data["ideas"]
-    achievements = achievements_data["achievements"]
-    groups = [
-        ("项目引用", projects), ("事项", work_items), ("待办", tasks),
-        ("实体名词", terms), ("闪念", ideas), ("成果胶囊", achievements),
-    ]
 
     def validate_sources(item_id, values, required=True):
         if not isinstance(values, list) or (required and not values):
@@ -106,32 +80,53 @@ def current_data_errors(
                 errors.append(f"{item_id} sources 存在非法来源对象")
                 return
 
-    ids = []
-    for label, values in groups:
-        allowed = CURRENT_OBJECT_FIELDS[label]
-        local_ids = []
-        for item in values:
-            item_id = item.get("id") if isinstance(item, dict) else None
-            local_ids.append(item_id)
-            if not isinstance(item, dict):
-                errors.append(f"{label}必须为对象数组")
-                continue
-            unknown = sorted(set(item) - allowed)
-            if unknown:
-                errors.append(f"{item_id} {label}包含非当前字段：{', '.join(unknown)}")
-        if any(value is None for value in local_ids):
-            errors.append(f"{label}存在空 ID")
-        if len(local_ids) != len(set(local_ids)):
-            errors.append(f"{label} ID 重复")
-        ids.extend(local_ids)
-    if len(ids) != len(set(ids)):
-        errors.append("记录 ID 跨类型重复")
+    term_ids = []
+    for term in terms:
+        if not isinstance(term, dict):
+            errors.append("实体名词必须为对象数组")
+            continue
+        term_ids.append(term.get("id"))
+        unknown = sorted(set(term) - TERM_FIELDS)
+        if unknown:
+            errors.append(f"{term.get('id')} 实体名词包含非当前字段：{', '.join(unknown)}")
+    if any(value is None for value in term_ids) or len(term_ids) != len(set(term_ids)):
+        errors.append("实体名词 ID 为空或重复")
 
-    project_ids = {item.get("id") for item in projects}
-    work_item_ids = {item.get("id") for item in work_items}
-    task_ids = {item.get("id") for item in tasks}
-    term_ids = {item.get("id") for item in terms}
-    terms_by_id = {item.get("id"): item for item in terms}
+    project_keys = []
+    for project in projects:
+        if not isinstance(project, dict):
+            errors.append("项目引用必须为对象数组")
+            continue
+        key = project.get("project_key")
+        project_keys.append(key)
+        if set(project) != PROJECT_FIELDS:
+            errors.append(f"{key} 项目引用字段不符合当前合同")
+        if not isinstance(key, str) or not key:
+            errors.append("项目引用缺少 project_key")
+        if project.get("tracking_state") not in PROJECT_TRACKING_STATES:
+            errors.append(f"{key} 跟踪状态非法")
+        if project.get("tracking_state") in {"paused", "archived"} and not project.get("status_reason"):
+            errors.append(f"{key} 暂停或归档必须有 status_reason")
+    if len(project_keys) != len(set(project_keys)):
+        errors.append("project_key 重复")
+
+    entry_ids = []
+    for entry in entries:
+        if not isinstance(entry, dict):
+            errors.append("entries 必须为对象数组")
+            continue
+        entry_ids.append(entry.get("id"))
+    if any(value is None for value in entry_ids):
+        errors.append("entries 存在空 ID")
+    if len(entry_ids) != len(set(entry_ids)):
+        errors.append("entries ID 重复")
+    if set(entry_ids) & set(term_ids):
+        errors.append("记录 ID 跨类型重复")
+    if errors:
+        return errors
+
+    known_projects = set(project_keys)
+    entries_by_id = {item.get("id"): item for item in entries}
     self_term = next(
         (item for item in terms if item.get("id") == SELF_ENTITY_ID), None
     )
@@ -142,149 +137,81 @@ def current_data_errors(
         or not self_term["name"].strip()
     ):
         errors.append(f"{SELF_ENTITY_ID} 必须是具备规范名称的本人实体")
-    achievement_ids = {item.get("id") for item in achievements}
-    work_items_by_id = {item.get("id"): item for item in work_items}
-    tasks_by_id = {item.get("id"): item for item in tasks}
-    milestones_by_id = {}
 
-    for project in projects:
-        item_id = project.get("id")
-        if not item_id or not re.fullmatch(r"PRJ-\d{8}-\d{3}", item_id):
-            errors.append(f"项目引用 ID 格式非法：{item_id}")
-        if not project.get("project_key"):
-            errors.append(f"{item_id} 缺少 project_key")
-        if project.get("tracking_state") not in PROJECT_TRACKING_STATES:
-            errors.append(f"{item_id} 跟踪状态非法")
-        if project.get("tracking_state") in {"paused", "archived"} and not project.get("status_reason"):
-            errors.append(f"{item_id} 暂停或归档必须有 status_reason")
-
-    for item in work_items:
-        item_id = item.get("id")
-        if not item_id or not re.fullmatch(r"WI-\d{8}-\d{3}", item_id):
-            errors.append(f"事项 ID 格式非法：{item_id}")
-        if not item.get("title") or item.get("state") not in WORK_ITEM_STATES:
-            errors.append(f"{item_id} 标题或状态非法")
-        if item.get("project_id") and item.get("project_id") not in project_ids:
-            errors.append(f"{item_id} 关联不存在的项目引用")
-        if item.get("state") in {"waiting", "needs_confirmation", "paused", "closed"} and not item.get("status_reason"):
-            errors.append(f"{item_id} 当前状态必须有 status_reason")
-        validate_sources(item_id, item.get("sources"))
-        milestones = item.get("milestones")
-        if not isinstance(milestones, list):
-            errors.append(f"{item_id} milestones 必须为数组")
+    for entry in entries:
+        item_id = entry.get("id")
+        kind = entry.get("kind")
+        if kind not in ENTRY_KINDS:
+            errors.append(f"{item_id} 类型非法：{kind}")
             continue
-        if milestones and item.get("next_gate") is not None:
-            errors.append(f"{item_id} 路线事项不得保存根 next_gate")
-        current_count = 0
-        for milestone in milestones:
-            milestone_id = milestone.get("id")
-            if set(milestone) - CURRENT_MILESTONE_FIELDS:
-                errors.append(f"{milestone_id} 里程碑包含非当前字段")
-            if not milestone_id or not re.fullmatch(r"MS-\d{8}-\d{3}", milestone_id):
-                errors.append(f"里程碑 ID 格式非法：{milestone_id}")
-            if milestone_id in milestones_by_id:
-                errors.append(f"里程碑 ID 重复：{milestone_id}")
-            milestones_by_id[milestone_id] = (item_id, milestone)
-            if milestone.get("status") not in MILESTONE_STATUSES:
-                errors.append(f"{milestone_id} 状态非法")
-            if milestone.get("status") == "current":
-                current_count += 1
-            for field in ("title", "outcome", "completion_criteria"):
-                if not milestone.get(field):
-                    errors.append(f"{milestone_id} 缺少 {field}")
-            valid_date_field(milestone_id, "target_at", milestone.get("target_at"), errors)
-            completion = milestone.get("completion")
-            if milestone.get("status") == "completed":
-                if not milestone.get("completed_at") or not milestone.get("decision"):
-                    errors.append(f"{milestone_id} 完成时缺少 completed_at 或 decision")
-                if not isinstance(completion, dict) or not completion.get("summary"):
-                    errors.append(f"{milestone_id} 完成时缺少 completion.summary")
-                elif set(completion) != {"summary", "sources"}:
-                    errors.append(f"{milestone_id} completion 结构非法")
-                else:
-                    validate_sources(milestone_id, completion.get("sources"))
-            elif completion is not None or milestone.get("completed_at") is not None:
-                errors.append(f"{milestone_id} 非完成状态不得保存 completion 或 completed_at")
-        if current_count > 1:
-            errors.append(f"{item_id} 最多只能有一个 current 里程碑")
-        if milestones and item.get("state") in {"active", "waiting", "needs_confirmation"} and current_count != 1:
-            errors.append(f"{item_id} 活跃路线事项必须有且仅有一个 current 里程碑")
-
-    open_tasks_by_work_item = set()
-    for item in tasks:
-        item_id = item.get("id")
-        if not item_id or not re.fullmatch(r"TASK-\d{8}-\d{3}", item_id):
-            errors.append(f"待办 ID 格式非法：{item_id}")
-        status = item.get("status")
-        if status not in TASK_STATUSES or not item.get("outcome"):
-            errors.append(f"{item_id} 结果或状态非法")
-        work_item_id = item.get("work_item_id")
-        project_id = item.get("project_id")
-        if work_item_id and work_item_id not in work_item_ids:
-            errors.append(f"{item_id} 关联不存在的事项")
-        if work_item_id and project_id is not None:
-            errors.append(f"{item_id} 关联事项时 project_id 必须为空")
-        if project_id and project_id not in project_ids:
-            errors.append(f"{item_id} 关联不存在的项目引用")
-        if status in {"active", "waiting", "paused"} and work_item_id:
-            open_tasks_by_work_item.add(work_item_id)
-        if status in {"waiting", "paused", "cancelled"} and not item.get("status_reason"):
-            errors.append(f"{item_id} 当前状态必须有 status_reason")
-        party = item.get("responsible_party")
-        if not isinstance(party, dict) or not party.get("kind") or not party.get("name") or set(party) - CURRENT_RESPONSIBLE_PARTY_FIELDS:
-            errors.append(f"{item_id} responsible_party 结构非法")
-        elif party.get("entity_id") and party.get("entity_id") not in term_ids:
-            errors.append(f"{item_id} 责任实体不存在")
-        elif party.get("kind") != "self" and party.get("entity_id") == SELF_ENTITY_ID:
-            errors.append(f"{item_id} {SELF_ENTITY_ID} 只能用于 kind=self")
-        elif party.get("entity_id") and party.get("name") != terms_by_id[
-            party["entity_id"]
-        ].get("name"):
-            errors.append(f"{item_id} 责任方名称必须与 entity_id 的规范名称一致")
-        elif party.get("kind") == "self" and self_term and (
-            party.get("entity_id") != SELF_ENTITY_ID
-        ):
-            errors.append(
-                f"{item_id} self 责任方必须使用 {SELF_ENTITY_ID} 的规范名称与实体 ID"
+        expected_fields = set(entry_field_order(kind))
+        if set(entry) != expected_fields:
+            missing = sorted(expected_fields - set(entry))
+            unknown = sorted(set(entry) - expected_fields)
+            detail = "；".join(
+                part
+                for part in (
+                    f"缺少 {', '.join(missing)}" if missing else "",
+                    f"多出 {', '.join(unknown)}" if unknown else "",
+                )
+                if part
             )
-        action = item.get("next_action")
-        if action is not None:
-            if not isinstance(action, dict) or set(action) - CURRENT_NEXT_ACTION_FIELDS or not action.get("text"):
-                errors.append(f"{item_id} next_action 结构非法")
-        valid_date_field(item_id, "due_at", item.get("due_at"), errors)
-        validate_sources(item_id, item.get("sources"))
-        milestone_id = item.get("milestone_id")
-        if milestone_id:
-            owner = milestones_by_id.get(milestone_id)
-            if not owner or owner[0] != work_item_id:
-                errors.append(f"{item_id} 关联不存在或不属于事项的里程碑")
-            elif status in {"active", "waiting", "paused"} and owner[1].get("status") != "current":
-                errors.append(f"{item_id} 未完成时必须关联 current 里程碑")
-        elif work_item_id and milestone_list(work_items_by_id[work_item_id]) and status in {"active", "waiting", "paused"}:
-            errors.append(f"{item_id} 路线事项的未完成待办缺少 milestone_id")
-        completion = item.get("completion")
-        if status == "completed":
-            if not item.get("closed_at") or not isinstance(completion, dict):
-                errors.append(f"{item_id} 完成时缺少 closed_at 或 completion")
-            elif set(completion) - CURRENT_COMPLETION_FIELDS or not completion.get("summary"):
-                errors.append(f"{item_id} completion 结构非法")
-            else:
-                validate_sources(item_id, completion.get("sources"))
-                for value in completion.get("values", []):
-                    if not isinstance(value, dict) or set(value) - CURRENT_VALUE_FIELDS or value.get("type") not in VALUE_TYPES or not value.get("statement"):
-                        errors.append(f"{item_id} completion.values 结构非法")
-                if not isinstance(completion.get("reflections", []), list) or any(not isinstance(v, str) or not v for v in completion.get("reflections", [])):
-                    errors.append(f"{item_id} completion.reflections 结构非法")
-        elif completion is not None or item.get("closed_at") is not None:
-            errors.append(f"{item_id} 未完成时不得保存 completion 或 closed_at")
+            errors.append(f"{item_id} 字段不符合 {kind} 的合同：{detail}")
+            continue
+        prefix = ENTRY_ID_PREFIXES[kind]
+        if not item_id or not re.fullmatch(rf"{prefix}-\d{{8}}-\d{{3}}", item_id):
+            errors.append(f"ID 格式非法：{item_id}")
+        status = entry.get("status")
+        if status not in ENTRY_STATUSES[kind]:
+            errors.append(f"{item_id} 状态非法：{status}")
+            continue
+        if not _text(entry.get("text")):
+            errors.append(f"{item_id} 正文不能为空")
+        if entry.get("project") is not None and entry.get("project") not in known_projects:
+            errors.append(f"{item_id} 挂在没有跟踪的项目上：{entry.get('project')}")
+        for field in ("note", "context"):
+            if entry.get(field) is not None and not _text(entry.get(field)):
+                errors.append(f"{item_id} {field} 不能是空文本")
+        if status in NOTE_REQUIRED[kind] and not _text(entry.get("note")):
+            errors.append(f"{item_id} 当前状态必须写 note")
+        if kind == "insight" and not _text(entry.get("context")):
+            errors.append(f"{item_id} 洞见必须在 context 写来由")
+        if not entry.get("created_at") or not entry.get("updated_at"):
+            errors.append(f"{item_id} 缺少 created_at 或 updated_at")
 
-    for item in work_items:
-        if not milestone_list(item) and item.get("state") != "closed" and not item.get("next_gate") and item.get("id") not in open_tasks_by_work_item:
-            errors.append(f"{item.get('id')} 轻量事项必须有 next_gate 或未完成待办")
+        ref = entry.get("ref")
+        if status in REF_REQUIRED and not ref:
+            errors.append(f"{item_id} 转成别的必须用 ref 指向那一笔")
+        if ref is not None:
+            target = entries_by_id.get(ref)
+            if status not in REF_ALLOWED[kind]:
+                errors.append(f"{item_id} 当前状态不得保存 ref")
+            elif ref == item_id or target is None:
+                errors.append(f"{item_id} ref 指向不存在的记录：{ref}")
+            elif status != "converted" and target.get("kind") != "insight":
+                errors.append(f"{item_id} ref 只能指向洞见：{ref}")
+            elif kind == "insight" and target.get("status") != "open":
+                errors.append(f"{item_id} 被取代时 ref 必须指向仍有效的洞见")
+
+        if kind in {"task", "question"} and not isinstance(entry.get("starred"), bool):
+            errors.append(f"{item_id} starred 必须为布尔值")
+        if kind == "task":
+            owner = entry.get("owner")
+            if owner is not None and not _text(owner):
+                errors.append(f"{item_id} owner 只能为空（本人）或负责人名字")
+            valid_date_field(item_id, "due", entry.get("due"), errors)
+            month = entry.get("month")
+            if status == "scheduled":
+                if not isinstance(month, str) or not re.fullmatch(
+                    r"\d{4}-(0[1-9]|1[0-2])", month
+                ):
+                    errors.append(f"{item_id} 排到以后必须写 month（YYYY-MM）")
+            elif month is not None:
+                errors.append(f"{item_id} 非 scheduled 状态不得保存 month")
 
     for term in terms:
         item_id = term.get("id")
-        if item_id != "ENT-SELF" and (not item_id or not re.fullmatch(r"ENT-\d{8}-\d{3}", item_id)):
+        if item_id != SELF_ENTITY_ID and (not item_id or not re.fullmatch(r"ENT-\d{8}-\d{3}", item_id)):
             errors.append(f"实体名词 ID 格式非法：{item_id}")
         name = term.get("name")
         description = term.get("description")
@@ -305,129 +232,49 @@ def current_data_errors(
         ):
             errors.append(f"{item_id} aliases 结构非法")
         validate_sources(item_id, term.get("sources"))
-        for related_id in term.get("related_items", []):
-            if related_id not in project_ids | work_item_ids | task_ids:
-                errors.append(f"{item_id} 关联不存在的工作对象")
-
-    for idea in ideas:
-        item_id = idea.get("id")
-        if not item_id or not re.fullmatch(r"IDEA-\d{8}-\d{3}", item_id) or idea.get("status") not in IDEA_STATUSES or not idea.get("text"):
-            errors.append(f"{item_id} 闪念字段非法")
-        validate_sources(item_id, idea.get("sources"), required=False)
-        if idea.get("status") == "archived" and not idea.get("status_reason"):
-            errors.append(f"{item_id} 归档必须有 status_reason")
-        if idea.get("status") == "promoted" and not idea.get("promoted_to"):
-            errors.append(f"{item_id} 已提升但没有目标")
-        for target in idea.get("promoted_to", []):
-            if target not in work_item_ids | task_ids:
-                errors.append(f"{item_id} 提升目标不存在")
-
-    achievements_by_id = {item.get("id"): item for item in achievements}
-    for item in achievements:
-        item_id = item.get("id")
-        if not item_id or not re.fullmatch(r"ACH-\d{8}-\d{3}", item_id):
-            errors.append(f"成果胶囊 ID 格式非法：{item_id}")
-        for field in ("title", "context", "outcome", "reuse"):
-            if not item.get(field):
-                errors.append(f"{item_id} 缺少 {field}")
-        if not isinstance(item.get("key_learnings"), list) or not item.get("key_learnings"):
-            errors.append(f"{item_id} key_learnings 必须为非空数组")
-        validate_sources(item_id, item.get("sources"))
-        links = item.get("task_links")
-        if not isinstance(links, list) or not links:
-            errors.append(f"{item_id} task_links 必须为非空数组")
-            links = []
-        if not any(link.get("relation") == "origin" for link in links if isinstance(link, dict)):
-            errors.append(f"{item_id} 至少需要一个 origin 待办")
-        for link in links:
-            if not isinstance(link, dict) or set(link) - CURRENT_ACHIEVEMENT_LINK_FIELDS or link.get("relation") not in ACHIEVEMENT_RELATIONS or not link.get("contribution"):
-                errors.append(f"{item_id} task_link 结构非法")
-            elif link.get("task_id") not in task_ids or tasks_by_id[link["task_id"]].get("status") != "completed":
-                errors.append(f"{item_id} task_link 必须关联已完成待办")
-        lifecycle = item.get("lifecycle")
-        if lifecycle not in ACHIEVEMENT_LIFECYCLES:
-            errors.append(f"{item_id} 生命周期非法")
-        if lifecycle in {"archived", "superseded"} and not item.get("status_reason"):
-            errors.append(f"{item_id} 当前生命周期必须有 status_reason")
-        replacement = item.get("superseded_by")
-        if lifecycle == "superseded":
-            if replacement == item_id or replacement not in achievement_ids or achievements_by_id[replacement].get("lifecycle") != "current":
-                errors.append(f"{item_id} superseded_by 非法")
-        elif replacement is not None:
-            errors.append(f"{item_id} 非 superseded 不得保存 superseded_by")
 
     event_ids = [event.get("event_id") for event in events]
     if len(event_ids) != len(set(event_ids)):
         errors.append("内部审计 ID 重复")
     for event in events:
-        if event.get("achievement_id") and event.get("achievement_id") not in achievement_ids:
-            errors.append("内部审计关联不存在的成果胶囊")
-        if event.get("kind") == "task_created" and event.get("schedule") is not None:
-            schedule = event["schedule"]
-            if not isinstance(schedule, dict) or set(schedule) - {"due_at"}:
-                errors.append("task_created schedule 结构非法")
-            else:
-                for field, value in schedule.items():
-                    valid_date_field(event.get("task_id", "内部审计"), field, value, errors)
-        if event.get("kind") == "task_schedule_changed":
-            if event.get("task_id") not in task_ids:
-                errors.append("计划日期变更事件关联不存在的待办")
-            changes = event.get("schedule_changes")
-            if not isinstance(changes, list) or not changes:
-                errors.append("计划日期变更事件缺少 schedule_changes")
-                continue
-            reason_code = event.get("reason_code")
-            if reason_code is not None and (
-                not isinstance(reason_code, str)
-                or reason_code not in SCHEDULE_REASON_CODES
+        if event.get("kind") != "task_schedule_changed":
+            continue
+        task_id = event.get("entry_id") or event.get("task_id")
+        if task_id not in entries_by_id:
+            errors.append("计划日期变更事件关联不存在的待办")
+        changes = event.get("schedule_changes")
+        if not isinstance(changes, list) or not changes:
+            errors.append("计划日期变更事件缺少 schedule_changes")
+            continue
+        reason_code = event.get("reason_code")
+        if reason_code is not None and (
+            not isinstance(reason_code, str)
+            or reason_code not in SCHEDULE_REASON_CODES
+        ):
+            errors.append("计划日期变更事件 reason_code 非法")
+        if event.get("reason_note") and not reason_code:
+            errors.append("计划日期变更事件 reason_note 缺少 reason_code")
+        for change in changes:
+            if (
+                not isinstance(change, dict)
+                or set(change) != {"field", "from", "to", "direction"}
+                or change.get("field") != "due_at"
+                or change.get("direction")
+                not in {"set", "advanced", "postponed", "cleared"}
             ):
-                errors.append("计划日期变更事件 reason_code 非法")
-            if event.get("reason_note") and not reason_code:
-                errors.append("计划日期变更事件 reason_note 缺少 reason_code")
-            for change in changes:
-                if (
-                    not isinstance(change, dict)
-                    or set(change) != {"field", "from", "to", "direction"}
-                    or not isinstance(change.get("field"), str)
-                    or change.get("field") != "due_at"
-                    or not isinstance(change.get("direction"), str)
-                    or change.get("direction")
-                    not in {"set", "advanced", "postponed", "cleared"}
-                ):
-                    errors.append("计划日期变更事件 change 结构非法")
-                    continue
-                valid_date_field(
-                    event.get("task_id", "内部审计"),
-                    f"{change['field']}.from",
-                    change.get("from"),
-                    errors,
-                )
-                valid_date_field(
-                    event.get("task_id", "内部审计"),
-                    f"{change['field']}.to",
-                    change.get("to"),
-                    errors,
-                )
-                try:
-                    expected = schedule_change(
-                        change["field"], change.get("from"), change.get("to")
-                    )
-                except (TypeError, ValueError):
-                    expected = None
-                if expected is None or expected["direction"] != change["direction"]:
-                    errors.append("计划日期变更事件 direction 与 from/to 不一致")
-                if change["direction"] in {"postponed", "cleared"} and not reason_code:
-                    errors.append("延后或清除计划日期的事件缺少 reason_code")
-        if event.get("kind") == "task_started":
-            task_id = event.get("task_id")
-            if task_id not in task_ids:
-                errors.append("开始推进事件关联不存在的待办")
+                errors.append("计划日期变更事件 change 结构非法")
                 continue
-            valid_date_field(
-                task_id,
-                "task_started.started_at",
-                event.get("started_at"),
-                errors,
-            )
+            valid_date_field(task_id, "due_at.from", change.get("from"), errors)
+            valid_date_field(task_id, "due_at.to", change.get("to"), errors)
+            try:
+                expected = schedule_change(
+                    change["field"], change.get("from"), change.get("to")
+                )
+            except (TypeError, ValueError):
+                expected = None
+            if expected is None or expected["direction"] != change["direction"]:
+                errors.append("计划日期变更事件 direction 与 from/to 不一致")
+            if change["direction"] in {"postponed", "cleared"} and not reason_code:
+                errors.append("延后或清除计划日期的事件缺少 reason_code")
 
     return errors

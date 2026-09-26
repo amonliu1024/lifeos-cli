@@ -14,7 +14,7 @@ from typing import Any, Callable
 from urllib.parse import unquote, urlparse
 
 from lifeos_reports.store import ReportError
-from lifeos_work.runtime import read_current_data, read_events
+from lifeos_work.runtime import read_current_data
 
 from .projection import build_snapshot, report_detail, resolve_openable_report
 
@@ -48,12 +48,10 @@ class LifeOSWebServer(ThreadingHTTPServer):
         reports_root: Path,
         *,
         current_data_reader: Callable[[], tuple[dict[str, Any], ...]] = read_current_data,
-        events_reader: Callable[[], list[dict[str, Any]]] = read_events,
         opener: Callable[..., Any] = subprocess.run,
     ) -> None:
         self.reports_root = reports_root
         self.current_data_reader = current_data_reader
-        self.events_reader = events_reader
         self.opener = opener
         super().__init__(server_address, LifeOSRequestHandler)
 
@@ -114,7 +112,6 @@ class LifeOSRequestHandler(BaseHTTPRequestHandler):
                 payload = build_snapshot(
                     self.server.current_data_reader(),
                     self.server.reports_root,
-                    self.server.events_reader(),
                 )
             except SystemExit as exc:
                 self._error(HTTPStatus.CONFLICT, f"Work Runtime 无法读取（退出码 {exc.code}）")

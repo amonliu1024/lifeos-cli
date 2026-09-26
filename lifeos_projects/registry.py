@@ -11,15 +11,8 @@ from lifeos_config.core import ConfigError
 from .catalog import CatalogFinding, ProjectCatalog, discover_projects
 
 
-STORED_PROJECT_FIELDS = {
-    "id",
-    "project_key",
-    "tracking_state",
-    "status_reason",
-    "created_at",
-    "updated_at",
-}
-LEGACY_STORED_PROJECT_FIELDS = {*STORED_PROJECT_FIELDS, "manifest_path"}
+# Work 只按 project_key 保存个人跟踪状态；名称、目录和来源由 Catalog 即时补全。
+STORED_PROJECT_FIELDS = ("project_key", "tracking_state", "status_reason", "updated_at")
 
 
 def _catalog_for_work() -> ProjectCatalog:
@@ -82,7 +75,6 @@ def hydrate_projects_data(
 
 def compact_projects_data(projects_data: Dict[str, Any]) -> Dict[str, Any]:
     return {
-        "schema_version": projects_data.get("schema_version"),
         "updated_at": projects_data.get("updated_at"),
         "projects": [
             {key: item.get(key) for key in STORED_PROJECT_FIELDS}
@@ -109,7 +101,7 @@ def project_linkage_findings(
     resolved_catalog = catalog or _catalog_for_work()
     known = set(resolved_catalog.by_key)
     return [
-        f"{item.get('id')} 跟踪的项目当前不可用：{item.get('project_key')}"
+        f"跟踪的项目当前不可用：{item.get('project_key')}"
         for item in projects_data.get("projects", [])
         if item.get("tracking_state") != "archived"
         and item.get("project_key") not in known
@@ -147,7 +139,6 @@ def dchat_project_rows(_data_dir: Path | None = None) -> list[Dict[str, Any]]:
 
 
 __all__ = [
-    "LEGACY_STORED_PROJECT_FIELDS",
     "STORED_PROJECT_FIELDS",
     "compact_projects_data",
     "dchat_project_rows",

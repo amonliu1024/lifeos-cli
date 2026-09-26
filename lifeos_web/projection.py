@@ -7,88 +7,59 @@ from pathlib import Path
 from typing import Any
 
 from lifeos_reports import store as report_store
-from lifeos_work.model import brief_sort_key, latest_task_started_dates
-from lifeos_work.views import current_brief_item_sort_key
-
-
-TERMINAL_TASK_STATUSES = {"completed", "cancelled"}
+from lifeos_work.config import ENTRY_SYMBOLS, status_label
+from lifeos_work.model import (
+    is_kept,
+    is_live,
+    is_mine,
+    logged_on,
+    owner_name,
+    task_is_current,
+    task_quadrant,
+    task_sort_key,
+)
 
 
 def _project_summary(project: dict[str, Any] | None) -> dict[str, Any] | None:
     if not project:
         return None
     return {
-        "id": project.get("id"),
         "key": project.get("project_key"),
         "name": project.get("name") or project.get("project_key"),
         "availability": project.get("availability"),
     }
 
 
-def _next_action_summary(value: Any) -> dict[str, Any] | None:
-    if not isinstance(value, dict):
-        return None
-    return {"text": value.get("text")}
-
-
-def _completion_summary(value: Any) -> dict[str, Any] | None:
-    if not isinstance(value, dict):
-        return None
-    return {"summary": value.get("summary")}
-
-
-def _task_projection(
-    task: dict[str, Any],
+def _entry_projection(
+    entry: dict[str, Any],
     projects: dict[str, dict[str, Any]],
+    reference_date: date,
 ) -> dict[str, Any]:
+    kind = entry.get("kind")
+    current = task_is_current(entry, reference_date)
+    mine = kind == "task" and is_mine(entry)
     return {
-        "id": task.get("id"),
-        "work_item_id": task.get("work_item_id"),
-        "outcome": task.get("outcome"),
-        "status": task.get("status"),
-        "due_at": task.get("due_at"),
-        "closed_at": task.get("closed_at"),
-        "created_at": task.get("created_at"),
-        "next_action": _next_action_summary(task.get("next_action")),
-        "completion_criteria": task.get("completion_criteria"),
-        "why": task.get("why"),
-        "completion": _completion_summary(task.get("completion")),
-        "project": _project_summary(projects.get(task.get("project_id"))),
-        "terminal": task.get("status") in TERMINAL_TASK_STATUSES,
-    }
-
-
-def _idea_projection(idea: dict[str, Any]) -> dict[str, Any]:
-    return {
-        "id": idea.get("id"),
-        "text": idea.get("text"),
-        "context": idea.get("context"),
-        "status": idea.get("status"),
-        "status_reason": idea.get("status_reason"),
-        "promoted_to": list(idea.get("promoted_to") or []),
-        "updated_at": idea.get("updated_at"),
-    }
-
-
-def _achievement_projection(achievement: dict[str, Any]) -> dict[str, Any]:
-    return {
-        "id": achievement.get("id"),
-        "title": achievement.get("title"),
-        "outcome": achievement.get("outcome"),
-        "context": achievement.get("context"),
-        "key_learnings": list(achievement.get("key_learnings") or []),
-        "reuse": achievement.get("reuse"),
-        "task_links": [
-            {
-                "task_id": link.get("task_id"),
-                "contribution": link.get("contribution"),
-            }
-            for link in achievement.get("task_links") or []
-            if isinstance(link, dict)
-        ],
-        "lifecycle": achievement.get("lifecycle"),
-        "created_at": achievement.get("created_at"),
-        "updated_at": achievement.get("updated_at"),
+        "id": entry.get("id"),
+        "kind": kind,
+        "symbol": ENTRY_SYMBOLS.get(kind),
+        "text": entry.get("text"),
+        "status": entry.get("status"),
+        "status_label": status_label(kind, entry.get("status")),
+        "note": entry.get("note"),
+        "ref": entry.get("ref"),
+        "starred": bool(entry.get("starred")),
+        "owner": owner_name(entry) if kind == "task" else None,
+        "due": entry.get("due"),
+        "month": entry.get("month"),
+        "context": entry.get("context"),
+        "project": _project_summary(projects.get(entry.get("project"))),
+        "logged_on": logged_on(entry),
+        "created_at": entry.get("created_at"),
+        "updated_at": entry.get("updated_at"),
+        "live": is_live(entry),
+        "kept": is_kept(entry),
+        "current": current and mine,
+        "quadrant": task_quadrant(entry, reference_date) if current and mine else None,
     }
 
 
@@ -134,117 +105,38 @@ def _report_index(reports_root: Path) -> list[dict[str, Any]]:
 def build_snapshot(
     current_data: tuple[dict[str, Any], ...],
     reports_root: Path,
-    events: list[dict[str, Any]] | None = None,
     reference_date: date | None = None,
 ) -> dict[str, Any]:
     """Build the single browser projection without retaining or writing state."""
 
-    (
-        projects_data,
-        work_items_data,
-        tasks_data,
-        _glossary_data,
-        ideas_data,
-        achievements_data,
-    ) = current_data
+    projects_data, entries_data, _glossary_data = current_data
     reference_date = reference_date or date.today()
-    started_dates = latest_task_started_dates(events or [])
     projects = {
-        item.get("id"): item for item in projects_data.get("projects", [])
+        item.get("project_key"): item for item in projects_data.get("projects", [])
     }
-    tasks = [
-        _task_projection(item, projects)
-        for item in tasks_data.get("tasks", [])
-    ]
-    task_sort_key = lambda task: brief_sort_key(
-        task,
-        reference_date,
-        "task",
-        started_dates.get(task.get("id")),
+    raw_entries = entries_data.get("entries", [])
+    ranked = sorted(
+        (
+            entry for entry in raw_entries
+            if entry.get("kind") == "task" and (task_is_current(entry, reference_date) or is_live(entry))
+        ),
+        key=lambda entry: task_sort_key(entry, reference_date),
     )
-    tasks_by_work_item: dict[str, list[dict[str, Any]]] = {}
-    standalone_tasks: list[dict[str, Any]] = []
-    for task in tasks:
-        work_item_id = task.get("work_item_id")
-        if work_item_id:
-            tasks_by_work_item.setdefault(work_item_id, []).append(task)
-        else:
-            standalone_tasks.append(task)
-
-    work_items = []
-    for item in work_items_data.get("work_items", []):
-        milestones = item.get("milestones") or []
-        current_milestone = next(
-            (milestone for milestone in milestones if milestone.get("status") == "current"),
-            None,
-        )
-        work_items.append(
-            {
-                "id": item.get("id"),
-                "title": item.get("title"),
-                "state": item.get("state"),
-                "next_gate": item.get("next_gate"),
-                "context": item.get("context"),
-                "created_at": item.get("created_at"),
-                "updated_at": item.get("updated_at"),
-                "project": _project_summary(projects.get(item.get("project_id"))),
-                "current_milestone": (
-                    {"outcome": current_milestone.get("outcome")}
-                    if current_milestone
-                    else None
-                ),
-                "tasks": sorted(
-                    tasks_by_work_item.get(item.get("id"), []),
-                    key=task_sort_key,
-                ),
-                "terminal": item.get("state") == "closed",
-            }
-        )
-    current_tasks_by_work_item = {
-        work_item_id: [
-            task for task in linked_tasks
-            if task.get("status") in {"active", "waiting"}
-        ]
-        for work_item_id, linked_tasks in tasks_by_work_item.items()
-    }
-    work_items.sort(
-        key=lambda item: current_brief_item_sort_key(
-            item,
-            current_tasks_by_work_item,
-            reference_date,
-            started_dates,
-        )
+    rank = {entry["id"]: index for index, entry in enumerate(ranked)}
+    entries = []
+    for entry in raw_entries:
+        projected = _entry_projection(entry, projects, reference_date)
+        projected["rank"] = rank.get(entry.get("id"))
+        entries.append(projected)
+    entries.sort(
+        key=lambda item: (item.get("created_at") or "", item.get("id") or ""),
+        reverse=True,
     )
-
     return {
-        "updated_at": max(
-            value
-            for value in (
-                work_items_data.get("updated_at"),
-                tasks_data.get("updated_at"),
-                ideas_data.get("updated_at"),
-                achievements_data.get("updated_at"),
-            )
-            if value
-        ),
-        "work": {
-            "items": work_items,
-            "standalone_tasks": sorted(standalone_tasks, key=task_sort_key),
-        },
+        "updated_at": entries_data.get("updated_at"),
+        "reference_date": reference_date.isoformat(),
+        "entries": entries,
         "reports": _report_index(reports_root),
-        "ideas": sorted(
-            (_idea_projection(item) for item in ideas_data.get("ideas", [])),
-            key=lambda item: item.get("updated_at", ""),
-            reverse=True,
-        ),
-        "achievements": sorted(
-            (
-                _achievement_projection(item)
-                for item in achievements_data.get("achievements", [])
-            ),
-            key=lambda item: item.get("updated_at", ""),
-            reverse=True,
-        ),
     }
 
 

@@ -13,10 +13,10 @@ from dataclasses import dataclass
 from pathlib import Path
 from typing import Any, Callable
 
-ROOT_DESCRIPTION = "人生 OS / LifeOS CLI：管理个人工作事实、Agent 会话、本地协作证据与报告状态。"
+ROOT_DESCRIPTION = "LifeOS CLI：本地运行的个人工作系统，用子弹笔记的方式记录工作，由 Agent 起草日报和周期复盘。"
 ROOT_EPILOG = """领域边界：
   project  校验项目工作区的 lifeos-project.json；不写 Private Runtime。
-  work     个人工作事实（项目引用、事项、待办、闪念、成果胶囊）；查询与写入都在此域。
+  work     个人工作记录（按天记的每一笔：• 待办、– 随记、? 疑问、! 洞见，以及项目引用和名词）；查询与写入都在此域。
   sessions 只读 Agent 应用来源，维护私有派生索引；不写来源日志、Work 或日报。
   git      只读本地 Git 提交，维护日报辅助证据快照；不修改仓库、remote、Work 或日报正文。
   dchat    只读 p2p / extp2p 私聊与项目清单群聊，维护私有原始证据；不发送消息、修改 DChat 或写 Work。
@@ -40,13 +40,14 @@ HOME_TEMPLATE = """{brand}
 
 常用命令
   lifeos work brief --mode current   查看当前工作简报
-  lifeos work tasks                  查看待办
+  lifeos work brief --mode monthly   月初盘点
+  lifeos work entries --live         查看仍在进行中的
   lifeos work show ID                查看一条记录的原始内容
   lifeos web serve --open            在浏览器打开本地工作台
   lifeos mirror push                 把工作台同步到自己的服务器
-  lifeos work task-add --help        新增待办
-  lifeos work task-close --help      完成待办并记录完成依据
-  lifeos work idea-add --help        记下一条闪念
+  lifeos work task-add --help        记一条待办
+  lifeos work note-add --help        记一条随记
+  lifeos work insight-add --help     留下一条洞见
 
 开始使用
   lifeos capabilities                检查本机可用能力
@@ -59,7 +60,7 @@ HOME_TEMPLATE = """{brand}
 def render_home(version):
     """Render the terminal adaptation of the layered-O brand mark beside the name and tagline."""
 
-    text_lines = ("", f"LifeOS v{version}", "", "以数据，照见人生。", "让行动有迹，让经历成知。", "")
+    text_lines = ("", f"LifeOS v{version}", "", "做过的有记录，", "想明白的留下来。", "")
     brand = "\n".join(
         f"{mark}   {text}".rstrip() for mark, text in zip(HOME_LOGO_LINES, text_lines)
     )

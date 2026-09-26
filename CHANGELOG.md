@@ -4,10 +4,28 @@
 
 ## Unreleased
 
+### 不兼容变更
+
+- Work 改用子弹笔记的记法：每天记下的每一笔分为 `•` 待办、`–` 随记、`?` 疑问、`!` 洞见四种，统一保存在 `entries.json`，每一笔都是扁平的一行，只保留当前状态的一句批注（`note`）和一个指向（`ref`）；来源与状态变化只记在审计事件里。事项、里程碑、闪念和成果胶囊不再存在，项目引用成为唯一分组。
+- 项目跟踪改按 `project_key` 保存，不再有 `PRJ-…` 编号；`project-update` 与 `--project` 都直接用 key。名词表不再保存关联对象。`projects.json`、`entries.json`、`glossary.json` 不再带 `schema_version`。
+- 已有 Runtime 需先运行 `lifeos work migrate-v2 --plan` 查看要你逐条决定的事项（未关闭事项的下一门槛、当前里程碑、暂停的待办），填好决定文件后 `--apply`；执行前完整备份，待办保留原 ID，原来的完成摘要、价值与复盘并入批注，等人的待办转为待做并把等什么写进背景，收件箱里的闪念转为随记，历史审计事件不改写。
+- 移除命令 `work-items`、`work-item-add`、`work-item-update`、`work-item-milestones`、`work-item-milestone-add`、`work-item-milestone-update`、`tasks`、`task-update`、`task-close`、`task-reflect`、`task-start`、`ideas`、`idea-add`、`idea-update`、`achievements`、`achievement-add`、`achievement-update`、`achievement-archive`、`achievement-supersede` 与 `migrate-project-catalog`；「已推进 N 天」不再显示。
+- 待办默认由本人负责，别人负责时用 `--owner` 写名字；`task-add` 用 `--text` 代替 `--outcome`，为什么做、完成标准和下一步合并为一段背景。
+
 ### 新增
 
+- 新增 `note-add`、`question-add`、`insight-add` 记随记、疑问和洞见；`task-add`、`question-add`、`insight-add` 可用 `--from` 把一条随记或疑问转成新的一笔；`insight-add --answers` 同时把一条疑问标为想通了。
+- 新增 `entry-update`、`task-done`、`task-schedule`（排到以后某个月）、`question-answer`、`entry-drop`（划掉，洞见被取代时可用 `--by` 指向新洞见）与 `entry-keep`；`entries` 可按类型、状态、项目、日期、星标和文字筛选；`show` 同时列出这一笔的审计历史。
+- 待办与疑问可以标星表示重要。`brief --mode current` 按「重要且紧急 / 重要不紧急 / 紧急 / 其余」四组平铺你的待办并标出项目，紧急指已逾期或 7 天内到期，另列等别人的待办，排到以后的待办在所属月份到来前不出现；新增 `brief --mode monthly` 月初盘点，列出排到本月的、超过 30 天没有变化的和本月没动过的星标，逐笔给个去向。
+- `review` 周期复盘列出本期新留下的洞见；派生视图新增 `insights.md`。
 - 新增 `lifeos calendar`：启用后按日报的自然日窗口只读 D-Chat 日历，把当天排的会存成快照，每条只留标题、起止时间、类型和参会人姓名；`series set` 可为循环会议记下默认去或不去。日报多一节「会议」，写你确认参加的会、每场服务哪个项目和总时长；Agent 生成日报后必须先列出准备记入和剔除的会由你确认，日历本身不判断你去没去。frontmatter 新增 `calendar_scan_id`、`calendar_events`、`calendar_event_ids`，未启用日历的日报不变。
 - 新增 `lifeos reports prune`：列出并删除重做日报或周期报时留下的旧稿快照，默认只预演，加 `--apply` 才删除，`--day` 可只处理某一天；当前日报与周期报不在范围内。
+
+### 变更
+
+- Web 工作台改为今日、待办、疑问、洞见、日报五栏：待办按项目归组、组内按重要紧急排序，可切换当前、等别人、排到以后和已完成；今日按天列出记下的每一笔；详情抽屉按每一笔的实际内容分区。
+- 镜像推送的 Work 数据改为 `projects.json`、`entries.json`、`glossary.json` 与 `events.jsonl`。
+- 首页口号改为「做过的有记录，想明白的留下来。」。
 
 ## v1.3.0
 

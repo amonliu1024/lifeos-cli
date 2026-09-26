@@ -355,6 +355,21 @@ h1, h2, h3, p { margin-top: 0; }
   background: var(--hairline);
 }
 .task-line .due-chip, .task-line .completion-chip { margin-left: auto; }
+.task-line .project-name { flex: 0 0 auto; }
+.task-line > .state-label { margin-left: auto; }
+
+/* 子弹笔记的记法：待办沿用手绘方点，随记、疑问、洞见和星标用同一套线性图标。 */
+.bullet-mark, .star-mark {
+  display: inline-flex;
+  flex: 0 0 auto;
+  align-items: center;
+  color: var(--faint);
+}
+.star-mark { color: var(--ink); }
+.star-mark svg { fill: currentColor; }
+.task-line.is-terminal .bullet-mark, .task-line.is-terminal .star-mark { color: var(--muted); }
+.work-card > .card-sheet .work-title { cursor: default; }
+.work-card:nth-child(2n) > .card-sheet { border-radius: 9px 13px 10px 12px; }
 
 .task-outcome, .work-title, .card-sheet .card-heading {
   position: relative;

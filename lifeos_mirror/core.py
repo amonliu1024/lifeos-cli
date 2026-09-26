@@ -22,24 +22,18 @@ from typing import Any
 from lifeos_reports.store import ReportError, locked as reports_locked
 from lifeos_web.publish import write_site
 from lifeos_work.config import (
-    ACHIEVEMENTS_PATH,
+    ENTRIES_PATH,
     EVENTS_PATH,
     GLOSSARY_PATH,
-    IDEAS_PATH,
     PROJECTS_PATH,
-    TASKS_PATH,
-    WORK_ITEMS_PATH,
 )
 from lifeos_work.runtime import exclusive_lock
 
 MIRROR_WORK_PATHS = (
     PROJECTS_PATH,
-    WORK_ITEMS_PATH,
-    TASKS_PATH,
+    ENTRIES_PATH,
     EVENTS_PATH,
     GLOSSARY_PATH,
-    IDEAS_PATH,
-    ACHIEVEMENTS_PATH,
 )
 SSH_COMMAND = "ssh -o BatchMode=yes -o ConnectTimeout=10 -o LogLevel=ERROR"
 

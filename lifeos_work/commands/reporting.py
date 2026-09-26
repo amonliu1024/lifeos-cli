@@ -4,16 +4,15 @@ import json
 import sys
 from datetime import datetime
 
-from ..config import TIMEZONE, VALUE_TYPES
+from ..config import TIMEZONE
 from ..errors import fail
 from ..model import (
-    effective_project_id,
-    effective_project_label,
+    event_entry_ids,
     find_item,
     matches_created_period,
     matches_period,
-    normalized_values,
     parse_moment,
+    project_label,
     review_period_label,
 )
 from ..runtime import read_current_data, read_events
@@ -21,126 +20,80 @@ from ..views import append_horizontal_rule, render_brief, render_now
 
 
 def command_now(_args):
-    projects, work_items, tasks, _glossary, _ideas, _achievements = read_current_data()
-    print(render_now(projects, work_items, tasks), end="")
+    projects, entries, _glossary = read_current_data()
+    print(render_now(projects, entries), end="")
+
 
 def command_brief(args):
-    (
-        _projects,
-        work_items,
-        tasks,
-        _glossary,
-        ideas,
-        _achievements,
-    ) = read_current_data()
-    print(render_brief(work_items, tasks, ideas, args.mode, events=read_events()), end="")
+    projects, entries, _glossary = read_current_data()
+    print(render_brief(projects, entries, args.mode), end="")
+
 
 def command_show(args):
-    projects, work_items, tasks, glossary, ideas, achievements = read_current_data()
-    all_items = [
-        *projects["projects"],
-        *work_items["work_items"],
-        *tasks["tasks"],
-        *glossary["terms"],
-        *ideas["ideas"],
-        *achievements["achievements"],
-    ]
-    print(
-        json.dumps(
-            find_item(all_items, args.id, "记录"), ensure_ascii=False, indent=2
-        )
+    """One record plus, for an entry, the audit events that shaped it."""
+    projects, entries, glossary = read_current_data()
+    project = next(
+        (item for item in projects["projects"] if item.get("project_key") == args.id),
+        None,
     )
+    record = project or find_item([*entries["entries"], *glossary["terms"]], args.id, "记录")
+    print(json.dumps(record, ensure_ascii=False, indent=2))
+    if project or args.no_history:
+        return
+    history = [event for event in read_events() if args.id in event_entry_ids(event)]
+    if not history:
+        return
+    print("\n历史：")
+    for event in history:
+        line = f"- {event.get('occurred_at', '?')} · {event.get('kind', '?')} · {event.get('summary', '')}"
+        if event.get("status_from") or event.get("status_to"):
+            line += f"（{event.get('status_from') or '—'} → {event.get('status_to')}）"
+        print(line)
 
-def completed_tasks(args):
-    (
-        projects,
-        work_items,
-        tasks,
-        _glossary,
-        _ideas,
-        achievements,
-    ) = read_current_data()
-    projects_by_id = {item.get("id"): item for item in projects["projects"]}
-    work_items_by_id = {
-        item.get("id"): item for item in work_items["work_items"]
-    }
-    achievements_by_task = {}
-    for achievement in achievements["achievements"]:
-        summary = {
-            "id": achievement["id"],
-            "title": achievement["title"],
-            "lifecycle": achievement["lifecycle"],
-        }
-        for link in achievement["task_links"]:
-            achievements_by_task.setdefault(link["task_id"], []).append(summary)
-    result = []
-    for task in tasks["tasks"]:
-        if task.get("status") != "completed" or not matches_period(task, args):
+
+def _project_filter(args, projects_by_key):
+    if not args.project:
+        return lambda item: True
+    needle = args.project.casefold()
+    return lambda item: needle in (
+        f"{project_label(item.get('project'), projects_by_key)} "
+        f"{item.get('project') or ''}"
+    ).casefold()
+
+
+def period_records(args):
+    projects, entries_data, _glossary = read_current_data()
+    projects_by_key = {item.get("project_key"): item for item in projects["projects"]}
+    in_project = _project_filter(args, projects_by_key)
+    done = []
+    insights = []
+    for entry in entries_data["entries"]:
+        if not in_project(entry):
             continue
-        display = dict(task)
-        display["_project_label"] = effective_project_label(
-            task, projects_by_id, work_items_by_id
-        )
-        if args.project and args.project.casefold() not in (
-            f"{display['_project_label']} "
-            f"{effective_project_id(task, work_items_by_id) or ''}"
-        ).casefold():
-            continue
-        if args.value_type and not any(
-            value.get("type") == args.value_type
-            for value in normalized_values(task.get("completion", {}))
-        ):
-            continue
-        display["_achievements"] = sorted(
-            achievements_by_task.get(task["id"], []),
-            key=lambda value: value["id"],
-        )
-        result.append(display)
-    return sorted(result, key=lambda item: item.get("closed_at", ""), reverse=True)
+        display = dict(entry)
+        display["_project_label"] = project_label(entry.get("project"), projects_by_key)
+        if entry.get("kind") == "task" and entry.get("status") == "done" and matches_period(entry, args):
+            done.append(display)
+        elif entry.get("kind") == "insight" and matches_created_period(entry, args):
+            insights.append(display)
+    done.sort(key=lambda item: item.get("updated_at", ""), reverse=True)
+    insights.sort(key=lambda item: item.get("created_at", ""), reverse=True)
+    return done, insights
+
 
 def history_lines(item):
-    completion = item.get("completion", {})
-    lines = [
+    return [
         f"### {item['id']} · {item.get('_project_label', '未归属')}",
         "",
-        f"- **完成时间**：{item.get('closed_at', '未记录')}",
-        f"- **完成摘要**：{completion.get('summary', item.get('outcome', '未记录'))}",
-        "- **来源**：",
+        f"- **待办**：{item['text']}",
+        f"- **完成时间**：{item.get('updated_at', '未记录')}",
+        f"- **完成了什么**：{item.get('note') or '未记录'}",
+        "",
     ]
-    for source in completion.get("sources", []):
-        lines.append(f"  - {source.get('location', '未记录')}")
-    lines.append("- **实际价值**：")
-    values = normalized_values(completion)
-    if values:
-        for value in values:
-            lines.append(
-                f"  - {VALUE_TYPES.get(value.get('type'), value.get('type', '其他'))}："
-                f"{value.get('statement', '未记录')}"
-            )
-    else:
-        lines.append("  - 本次关闭明确记录为尚未观察到价值。")
-    lines.append("- **复盘**：")
-    reflections = completion.get("reflections", [])
-    if reflections:
-        for reflection in reflections:
-            lines.append(f"  - {reflection}")
-    else:
-        lines.append("  - 尚未补充。")
-    achievements = item.get("_achievements", [])
-    lines.append("- **成果胶囊**：")
-    if achievements:
-        for achievement in achievements:
-            lines.append(
-                f"  - {achievement['id']} · {achievement['title']}"
-                f"（{achievement['lifecycle']}）"
-            )
-    else:
-        lines.append("  - 无；普通完成事项不要求形成成果胶囊。")
-    lines.append("")
-    return lines
+
 
 def command_history(args):
-    items = completed_tasks(args)
+    items, _insights = period_records(args)
     if args.json:
         print(json.dumps(items, ensure_ascii=False, indent=2))
         return
@@ -155,38 +108,18 @@ def command_history(args):
         lines += history_lines(item)
     print("\n".join(lines), end="")
 
+
 def command_review(args):
-    items = completed_tasks(args)
-    (
-        _projects,
-        _work_items,
-        _tasks,
-        _glossary,
-        _ideas,
-        achievements_data,
-    ) = read_current_data()
-    achievements = [
-        item
-        for item in achievements_data["achievements"]
-        if matches_created_period(item, args)
-    ]
+    items, insights = period_records(args)
     if args.json:
-        counts = {}
-        for item in items:
-            for value in normalized_values(item.get("completion", {})):
-                value_type = value.get("type", "other")
-                counts[value_type] = counts.get(value_type, 0) + 1
         print(
             json.dumps(
                 {
                     "period": review_period_label(args),
                     "completed_count": len(items),
-                    "projects": sorted(
-                        {item.get("_project_label", "未归属") for item in items}
-                    ),
-                    "value_counts": counts,
+                    "projects": sorted({item["_project_label"] for item in items}),
                     "items": items,
-                    "achievements": achievements,
+                    "insights": insights,
                 },
                 ensure_ascii=False,
                 indent=2,
@@ -200,8 +133,8 @@ def command_review(args):
         f"# {review_period_label(args)} 成果复盘",
         "",
         f"- 完成待办：{len(items)} 项",
-        f"- 覆盖项目引用：{len(groups)} 个",
-        f"- 形成成果胶囊：{len(achievements)} 个",
+        f"- 覆盖项目：{len(groups)} 个",
+        f"- 新留下的洞见：{len(insights)} 条",
         "",
     ]
     for project, project_items in sorted(groups.items()):
@@ -209,21 +142,16 @@ def command_review(args):
         lines += [f"## {project}（{len(project_items)}）", ""]
         for item in project_items:
             lines.append(
-                f"- {item['id']}：{item.get('completion', {}).get('summary', item['outcome'])}"
+                f"- {item['id']}：{item.get('note') or item['text']}"
             )
         lines.append("")
     append_horizontal_rule(lines)
-    lines += ["## 成果胶囊", ""]
-    if achievements:
-        for achievement in sorted(
-            achievements, key=lambda value: value["created_at"], reverse=True
-        ):
-            lines.append(
-                f"- {achievement['id']}：{achievement['title']}"
-                f"（{achievement['lifecycle']}）"
-            )
+    lines += ["## 洞见", ""]
+    if insights:
+        for insight in insights:
+            lines.append(f"- {insight['id']}：{insight['text']}")
     else:
-        lines.append("- 本周期未形成成果胶囊；普通完成事项不构成沉淀债务。")
+        lines.append("- 本周期没有新留下的洞见。")
     lines.append("")
     print("\n".join(lines), end="")
 
@@ -293,6 +221,8 @@ def command_changes(args):
             (
                 event.get(field)
                 for field in (
+                    "entry_id",
+                    "project",
                     "task_id",
                     "work_item_id",
                     "milestone_id",

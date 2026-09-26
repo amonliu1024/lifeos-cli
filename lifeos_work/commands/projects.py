@@ -6,12 +6,7 @@ from lifeos_projects.catalog import discover_projects
 from lifeos_projects.registry import hydrate_project_record
 
 from ..errors import fail
-from ..model import (
-    find_item,
-    generate_id,
-    iso_now,
-    make_event,
-)
+from ..model import iso_now, make_event
 from ..runtime import (
     read_current_data,
     transaction,
@@ -20,14 +15,7 @@ from ..views import render_projects
 
 
 def command_projects(args):
-    (
-        projects_data,
-        _work_items,
-        _tasks,
-        _glossary,
-        _ideas,
-        _achievements,
-    ) = read_current_data()
+    projects_data, _entries, _glossary = read_current_data()
     projects = projects_data["projects"]
     if args.tracking_state:
         projects = [
@@ -68,16 +56,11 @@ def command_project_track(args):
         if args.tracking_state in {"paused", "archived"} and not args.reason:
             fail("暂停或归档项目引用必须提供 --reason")
         timestamp = iso_now()
-        project_id = generate_id(
-            "PRJ", [item.get("id", "") for item in projects_data["projects"]]
-        )
         projects_data["projects"].append(
             hydrate_project_record({
-                "id": project_id,
                 "project_key": args.project_key,
                 "tracking_state": args.tracking_state,
                 "status_reason": args.reason,
-                "created_at": timestamp,
                 "updated_at": timestamp,
             }, catalog)
         )
@@ -86,8 +69,8 @@ def command_project_track(args):
             tx.events,
             args,
             "project_registered",
-            f"跟踪项目 {project_id}：{project_manifest.name}",
-            project_id=project_id,
+            f"跟踪项目 {args.project_key}：{project_manifest.name}",
+            project=args.project_key,
             sources=args.source,
         )
         tx.commit("projects", event)
@@ -98,8 +81,12 @@ def command_project_update(args):
         if tx.idempotent_result():
             return
         projects_data = tx.data("projects")
-        project = find_item(projects_data["projects"], args.id, "项目引用")
-        project_id = project["id"]
+        project = next(
+            (item for item in projects_data["projects"] if item.get("project_key") == args.project_key),
+            None,
+        )
+        if project is None:
+            fail(f"没有跟踪这个项目：{args.project_key}")
         changes = []
         for field, value in {"tracking_state": args.tracking_state}.items():
             if value is not None and value != project.get(field):
@@ -119,8 +106,8 @@ def command_project_update(args):
             tx.events,
             args,
             "project_updated",
-            f"更新项目引用 {project_id}：{', '.join(changes)}",
-            project_id=project_id,
+            f"更新项目引用 {args.project_key}：{', '.join(changes)}",
+            project=args.project_key,
             sources=args.source,
         )
         tx.commit("projects", event)

@@ -68,6 +68,12 @@ lifeos reports validate
 
 确认只表示本人接受当前周期报草稿，不重新读取或比对日报。完成标准：周期报保持 draft，直到本人明确确认后才成为 confirmed，随后 Reports 全量校验通过。
 
+## 五、洞见候选
+
+交付周期报草稿时，在对话里（不写进报告正文）另列最多三条洞见候选，供本人决定是否留进 LifeOS Work。候选只从两类里挑：同一个判断在不同日子的日报里反复出现；或者日报里保留了本人当时的原话。每条写一句判断、一段来由（让他想明白的那件具体的事），并注明依据——出现在哪几天，或原话出自哪天。已经写进 CLAUDE.md、Skill 规则或已有有效洞见的不再提；先用 `lifeos work entries --kind insight --live --query <关键词>` 查重。
+
+本人逐条确认后，按 Work 写入分支用 `lifeos work insight-add` 写入，未确认的候选留在对话里，不写进 Work，也不因周期报被确认而自动写入。某条已有洞见在本周期反复被印证、值得写成规则时，只提议去处，由本人写进规则后再用 `lifeos work entry-update <ID> --note "写进了哪里"` 记下。
+
 ## 边界
 
 Periodic 不创建或修改日报，不生成 Work，也不修改项目状态或 Obsidian。周期报暂不进入 LifeOS Web。

@@ -26,14 +26,7 @@ SCRIPT = REPO_DIR / "lifeos.py"
 def fixture_current_data():
     return tuple(
         json.loads((FIXTURE_DIR / name).read_text(encoding="utf-8"))
-        for name in (
-            "projects.json",
-            "work-items.json",
-            "tasks.json",
-            "glossary.json",
-            "ideas.json",
-            "achievements.json",
-        )
+        for name in ("projects.json", "entries.json", "glossary.json")
     )
 
 
@@ -57,41 +50,34 @@ class WebProjectionTest(unittest.TestCase):
     def tearDown(self):
         self.temporary_directory.cleanup()
 
-    def test_snapshot_preserves_relationships_and_marks_terminal_records(self):
+    def entries(self, data):
+        return data[1]["entries"]
+
+    def test_snapshot_projects_entries_and_marks_live_records(self):
         data = list(copy.deepcopy(fixture_current_data()))
-        data[1]["work_items"].append(
+        done = copy.deepcopy(self.entries(data)[0])
+        done.update(
             {
-                "id": "WI-20260829-999",
-                "title": "已结束主线",
-                "project_id": None,
-                "state": "closed",
-                "next_gate": None,
-                "milestones": [],
-                "sources": [],
-                "created_at": "2026-08-29T10:00:00+08:00",
+                "id": "TASK-20260829-999",
+                "status": "done",
+                "note": "做完了",
                 "updated_at": "2026-08-29T12:00:00+08:00",
             }
         )
-        completed = copy.deepcopy(data[2]["tasks"][0])
-        completed.update(
-            {
-                "id": "TASK-20260829-999",
-                "work_item_id": "WI-20260829-999",
-                "status": "completed",
-                "closed_at": "2026-08-29T12:00:00+08:00",
-            }
-        )
-        data[2]["tasks"].append(completed)
+        self.entries(data).append(done)
         before = copy.deepcopy(data)
 
-        snapshot = build_snapshot(tuple(data), self.reports_root)
+        snapshot = build_snapshot(tuple(data), self.reports_root, reference_date=date(2026, 8, 30))
 
-        active = next(item for item in snapshot["work"]["items"] if item["id"] == "WI-20260725-001")
-        closed = next(item for item in snapshot["work"]["items"] if item["id"] == "WI-20260829-999")
-        self.assertFalse(active["terminal"])
-        self.assertFalse(active["tasks"][0]["terminal"])
-        self.assertTrue(closed["terminal"])
-        self.assertTrue(closed["tasks"][0]["terminal"])
+        by_id = {item["id"]: item for item in snapshot["entries"]}
+        self.assertTrue(by_id["TASK-20260725-001"]["live"])
+        self.assertTrue(by_id["TASK-20260725-001"]["current"])
+        self.assertEqual("•", by_id["TASK-20260725-001"]["symbol"])
+        self.assertFalse(by_id["TASK-20260829-999"]["live"])
+        self.assertIsNone(by_id["TASK-20260829-999"]["rank"])
+        self.assertEqual(("做完了", "完成"), (by_id["TASK-20260829-999"]["note"], by_id["TASK-20260829-999"]["status_label"]))
+        self.assertEqual("2026-07-25", by_id["TASK-20260725-001"]["logged_on"])
+        self.assertEqual("2026-08-30", snapshot["reference_date"])
         self.assertEqual("2026-08-29", snapshot["reports"][0]["day"])
         self.assertNotIn("path", snapshot["reports"][0])
         self.assertEqual(before, data)
@@ -107,31 +93,15 @@ class WebProjectionTest(unittest.TestCase):
                 "sources": [{"location": private_path}],
             }
         )
-        data[1]["work_items"][0]["sources"] = [{"location": private_path}]
-        data[2]["tasks"][0]["sources"] = [{"location": private_path}]
-        data[4]["ideas"].append(
-            {
-                "id": "IDEA-PRIVATE",
-                "text": "私有路径不进入投影",
-                "status": "inbox",
-                "sources": [{"location": private_path}],
-            }
-        )
-        data[5]["achievements"].append(
-            {
-                "id": "ACH-PRIVATE",
-                "title": "私有路径不进入投影",
-                "lifecycle": "current",
-                "sources": [{"location": private_path}],
-            }
-        )
+        for entry in self.entries(data):
+            entry["context"] = None
 
         snapshot = build_snapshot(tuple(data), self.reports_root)
         encoded = json.dumps(snapshot, ensure_ascii=False)
 
         self.assertNotIn(private_path, encoded)
         self.assertNotIn("sources", encoded)
-        self.assertNotIn("responsible_party", encoded)
+        self.assertNotIn("fact_source", encoded)
 
     def test_snapshot_report_errors_do_not_expose_local_paths(self):
         invalid_path = store.report_path(self.reports_root, date(2026, 8, 28))
@@ -143,66 +113,29 @@ class WebProjectionTest(unittest.TestCase):
         self.assertEqual("日报无法读取", invalid["error"])
         self.assertNotIn(str(invalid_path), json.dumps(snapshot, ensure_ascii=False))
 
-    def test_tasks_reuse_current_brief_due_then_actual_start_order(self):
+    def test_rank_reuses_the_brief_order_of_importance_then_urgency(self):
         data = list(copy.deepcopy(fixture_current_data()))
-        template = copy.deepcopy(data[2]["tasks"][0])
+        template = copy.deepcopy(self.entries(data)[0])
         tasks = []
-        for task_id, due_at, created_at in (
-            ("TASK-DUE-LATER", "2026-09-03", "2026-01-01T00:00:00+08:00"),
-            ("TASK-NO-DUE-NEW", None, "2026-01-02T00:00:00+08:00"),
-            ("TASK-DUE-SOON", "2026-09-01", "2026-01-03T00:00:00+08:00"),
-            ("TASK-NO-DUE-OLD", None, "2026-01-04T00:00:00+08:00"),
-            ("TASK-NO-START", None, "2025-01-01T00:00:00+08:00"),
+        for task_id, starred, due in (
+            ("TASK-20260801-005", False, None),
+            ("TASK-20260801-004", False, "2026-09-01"),
+            ("TASK-20260801-003", True, None),
+            ("TASK-20260801-002", True, "2026-08-31"),
         ):
             task = copy.deepcopy(template)
-            task.update({"id": task_id, "due_at": due_at, "created_at": created_at})
+            task.update({"id": task_id, "starred": starred, "due": due})
             tasks.append(task)
-        data[2]["tasks"] = tasks
-        events = [
-            {"kind": "task_started", "task_id": "TASK-NO-DUE-NEW", "started_at": "2026-08-20"},
-            {"kind": "task_started", "task_id": "TASK-NO-DUE-OLD", "started_at": "2026-08-10"},
-        ]
+        data[1]["entries"] = tasks
 
-        snapshot = build_snapshot(
-            tuple(data), self.reports_root, events, reference_date=date(2026, 8, 30)
-        )
+        snapshot = build_snapshot(tuple(data), self.reports_root, reference_date=date(2026, 8, 30))
 
-        item = snapshot["work"]["items"][0]
+        ranked = sorted(snapshot["entries"], key=lambda item: item["rank"])
         self.assertEqual(
-            [
-                "TASK-DUE-SOON",
-                "TASK-DUE-LATER",
-                "TASK-NO-DUE-OLD",
-                "TASK-NO-DUE-NEW",
-                "TASK-NO-START",
-            ],
-            [task["id"] for task in item["tasks"]],
+            ["TASK-20260801-002", "TASK-20260801-003", "TASK-20260801-004", "TASK-20260801-005"],
+            [item["id"] for item in ranked],
         )
-
-    def test_work_items_follow_their_earliest_unfinished_task(self):
-        data = list(copy.deepcopy(fixture_current_data()))
-        undated_item = data[1]["work_items"][0]
-        undated_item.update({"id": "WI-UNDATED", "title": "无截止事项", "state": "active"})
-        due_item = copy.deepcopy(undated_item)
-        due_item.update({"id": "WI-DUE", "title": "临近截止事项"})
-        data[1]["work_items"] = [undated_item, due_item]
-        undated_task = data[2]["tasks"][0]
-        undated_task.update({"id": "TASK-UNDATED", "work_item_id": "WI-UNDATED", "due_at": None})
-        due_task = copy.deepcopy(undated_task)
-        due_task.update({"id": "TASK-DUE", "work_item_id": "WI-DUE", "due_at": "2026-08-31"})
-        data[2]["tasks"] = [undated_task, due_task]
-
-        snapshot = build_snapshot(
-            tuple(data),
-            self.reports_root,
-            [{"kind": "task_started", "task_id": "TASK-UNDATED", "started_at": "2026-08-01"}],
-            reference_date=date(2026, 8, 30),
-        )
-
-        self.assertEqual(
-            ["WI-DUE", "WI-UNDATED"],
-            [item["id"] for item in snapshot["work"]["items"]],
-        )
+        self.assertEqual([0, 1, 2, 3], [item["quadrant"] for item in ranked])
 
     def test_report_detail_is_date_derived_and_rejects_paths(self):
         before = self.report_path.read_bytes()
@@ -227,7 +160,6 @@ class WebServerTest(unittest.TestCase):
             0,
             self.reports_root,
             current_data_reader=fixture_current_data,
-            events_reader=lambda: [],
             opener=self.opener,
         )
         self.thread = threading.Thread(target=self.server.serve_forever, daemon=True)
@@ -257,6 +189,7 @@ class WebServerTest(unittest.TestCase):
         with urlopen(self.base_url + "/", timeout=2) as response:
             html = response.read().decode("utf-8")
             self.assertIn("data-tab=\"work\"", html)
+            self.assertIn("data-tab=\"insights\"", html)
             self.assertIn("data-tab=\"daily\"", html)
             self.assertIn("role=\"dialog\"", html)
             self.assertIn("aria-modal=\"true\"", html)
@@ -274,7 +207,7 @@ class WebServerTest(unittest.TestCase):
         status, headers, payload = self.request_json("/api/snapshot")
         self.assertEqual(200, status)
         self.assertEqual("no-store", headers["Cache-Control"])
-        self.assertEqual("测试事项", payload["work"]["items"][0]["title"])
+        self.assertIn("测试待办 1", [item["text"] for item in payload["entries"]])
 
         status, _headers, report = self.request_json("/api/reports/2026-08-29")
         self.assertEqual(200, status)
