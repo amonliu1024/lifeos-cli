@@ -11,7 +11,8 @@ const state = {
   tab: "work",
   workMode: "doing",
   closedGroup: "month",
-  expanded: null,
+  expanded: new Set(),
+  expandedFor: null,
   noteMode: "open",
   insightMode: "active",
   reportDay: null,
@@ -217,7 +218,7 @@ function doingCards(tasks) {
     order: Math.min(...members.map((task) => (task.mine ? task.rank : task.rank + doing.length))),
   })).sort((left, right) => Number(left.key === "") - Number(right.key === "") || left.order - right.order);
   return groups.map(({ members }) => workCard(projectTitle(members[0]), members.map((task) => entryLine(task, {
-    aside: task.mine ? dueMark(task.due) : waitingMark(task.owner),
+    aside: task.mine ? dueMark(task.due) : `${waitingMark(task.owner)}${task.due ? `<span class="aside-divider"></span>${dueMark(task.due)}` : ""}`,
   }))));
 }
 
@@ -234,7 +235,12 @@ function closedCards(tasks) {
     .sort((left, right) => momentValue(right.updated_at) - momentValue(left.updated_at));
   const byMonth = state.closedGroup === "month";
   const groups = groupBy(closed, (task) => (byMonth ? String(task.updated_at).slice(0, 7) : projectTitle(task)));
-  if (!state.expanded) state.expanded = new Set([...groups.keys()].slice(0, 1));
+  // 最近的一组变了（第一次出现分组、跨月、换分组方式）就回到默认：只展开最近的一组。
+  const latest = groups.keys().next().value;
+  if (latest !== state.expandedFor) {
+    state.expanded = new Set(latest === undefined ? [] : [latest]);
+    state.expandedFor = latest;
+  }
   return [...groups.entries()].map(([key, members]) => {
     const done = members.filter((task) => task.status === "done").length;
     const dropped = members.length - done;
@@ -491,7 +497,7 @@ document.addEventListener("click", (event) => {
   if (mode) {
     const group = mode.dataset.modeGroup;
     if (group === "work") state.workMode = mode.dataset.mode;
-    if (group === "closed") { state.closedGroup = mode.dataset.mode; state.expanded = null; }
+    if (group === "closed") { state.closedGroup = mode.dataset.mode; state.expandedFor = null; }
     if (group === "notes") state.noteMode = mode.dataset.mode;
     if (group === "insights") state.insightMode = mode.dataset.mode;
     render(); return;
