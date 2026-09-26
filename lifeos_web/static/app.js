@@ -199,8 +199,10 @@ function groupBy(items, keyOf) {
   return groups;
 }
 
+const NO_PROJECT = "无项目";
+
 function projectTitle(task) {
-  return task.project?.name || "不归项目";
+  return task.project?.name || NO_PROJECT;
 }
 
 function momentValue(value) {
@@ -225,8 +227,9 @@ function doingCards(tasks) {
 function laterCards(tasks) {
   const later = tasks.filter((task) => task.status === "scheduled" && !task.current)
     .sort((left, right) => String(left.month).localeCompare(String(right.month)));
-  return [...groupBy(later, (task) => task.project?.key || "").values()]
-    .map((members) => workCard(projectTitle(members[0]), members.map((task) => entryLine(task, { aside: monthLabel(task.month) }))));
+  return [...groupBy(later, (task) => task.project?.key || "").entries()]
+    .sort(([left], [right]) => Number(left === "") - Number(right === ""))
+    .map(([, members]) => workCard(projectTitle(members[0]), members.map((task) => entryLine(task, { aside: monthLabel(task.month) }))));
 }
 
 // 已结束：完成和划掉放在一起，按时间（了结的月份）或按项目分组；默认只展开最近的一组。
@@ -241,7 +244,8 @@ function closedCards(tasks) {
     state.expanded = new Set(latest === undefined ? [] : [latest]);
     state.expandedFor = latest;
   }
-  return [...groups.entries()].map(([key, members]) => {
+  const ordered = [...groups.entries()].sort(([left], [right]) => (byMonth ? 0 : Number(left === NO_PROJECT) - Number(right === NO_PROJECT)));
+  return ordered.map(([key, members]) => {
     const done = members.filter((task) => task.status === "done").length;
     const dropped = members.length - done;
     const [year, month] = key.split("-");

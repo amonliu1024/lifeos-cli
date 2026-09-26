@@ -448,8 +448,8 @@ def render_insights(projects_data, entries_data):
         return "\n".join(lines)
     by_project = {}
     for item in insights:
-        by_project.setdefault(_project_part(item, projects_by_key) or "不归项目", []).append(item)
-    for group in sorted(by_project, key=lambda name: (name == "不归项目", name)):
+        by_project.setdefault(_project_part(item, projects_by_key) or "无项目", []).append(item)
+    for group in sorted(by_project, key=lambda name: (name == "无项目", name)):
         append_horizontal_rule(lines)
         lines += [f"## {group}", ""]
         for item in sorted(by_project[group], key=lambda value: value.get("id", "")):
