@@ -206,8 +206,8 @@ class WebServerTest(unittest.TestCase):
             self.assertEqual("image/svg+xml", response.headers["Content-Type"])
             self.assertIn(b"LifeOS", response.read())
 
-        with urlopen(self.base_url + "/assets/fonts/Geist-Regular.ttf", timeout=2) as response:
-            self.assertEqual("font/ttf", response.headers["Content-Type"])
+        with urlopen(self.base_url + "/assets/fonts/LXGWWenKai-Regular.woff2", timeout=2) as response:
+            self.assertEqual("font/woff2", response.headers["Content-Type"])
             self.assertGreater(len(response.read()), 1000)
 
         status, headers, payload = self.request_json("/api/snapshot")

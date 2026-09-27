@@ -1,14 +1,14 @@
 @font-face {
-  font-family: "Geist";
-  src: url("/assets/fonts/Geist-Regular.ttf") format("truetype");
+  font-family: "LXGW WenKai";
+  src: url("/assets/fonts/LXGWWenKai-Regular.woff2") format("woff2");
   font-display: swap;
   font-style: normal;
   font-weight: 400;
 }
 
 @font-face {
-  font-family: "Geist";
-  src: url("/assets/fonts/Geist-SemiBold.ttf") format("truetype");
+  font-family: "LXGW WenKai";
+  src: url("/assets/fonts/LXGWWenKai-Medium.woff2") format("woff2");
   font-display: swap;
   font-style: normal;
   font-weight: 500 600;
@@ -35,7 +35,7 @@
   --amber: #b7791f;
   --urgent: #bc5d45;
   --overdue: #b83f45;
-  --font-ui: "Geist", "PingFang SC", "Noto Sans CJK SC", -apple-system, BlinkMacSystemFont, sans-serif;
+  --font-ui: "LXGW WenKai", "PingFang SC", "Noto Sans CJK SC", -apple-system, BlinkMacSystemFont, sans-serif;
   --weight-body: 400;
   --weight-control: 500;
   --weight-title: 500;
