@@ -8,6 +8,7 @@ from ..model import (
     find_item,
     generate_id,
     glossary_matches,
+    is_kept,
     iso_now,
     make_event,
     now,
@@ -136,7 +137,9 @@ def command_term_update(args):
             for task in entries["entries"]:
                 if task.get("kind") == "task" and task.get("owner") == previous_name:
                     task["owner"] = term["name"]
-                    task["updated_at"] = timestamp
+                    # 已了结的待办 updated_at 是它了结的时间，改名不动它。
+                    if is_kept(task):
+                        task["updated_at"] = timestamp
                     updated_task_refs += 1
             if updated_task_refs:
                 entries["updated_at"] = timestamp

@@ -167,9 +167,12 @@ def update_entry(args, kinds, summary, event_kind, change):
         data = tx.data("entries")
         entry = find_entry(data["entries"], args.id, kinds)
         before = entry.get("status")
+        kept = is_kept(entry)
         detail = change(tx, entry, data["entries"])
         timestamp = iso_now()
-        entry["updated_at"] = timestamp
+        # 已了结的一笔只改措辞，updated_at 仍是它了结的时间。
+        if kept:
+            entry["updated_at"] = timestamp
         data["updated_at"] = timestamp
         after = entry.get("status")
         changed = before != after
@@ -186,15 +189,28 @@ def update_entry(args, kinds, summary, event_kind, change):
         tx.commit("entries", event)
 
 
-def require_editable(entry):
-    if not is_kept(entry):
+def require_editable(entry, args):
+    """Ended entries only take wording fixes to their context and note."""
+    if is_kept(entry):
+        return
+    wording_only = not (
+        args.text is not None
+        or args.project is not None
+        or args.clear_project
+        or args.star
+        or args.unstar
+        or args.owner is not None
+        or args.mine
+        or args.reopen
+    )
+    if not wording_only:
         label = status_label(entry.get("kind"), entry.get("status"))
-        fail(f"{entry['id']} 已经{label}，不能再修改")
+        fail(f"{entry['id']} 已经{label}，除了背景和批注不能再修改")
 
 
 def command_entry_update(args):
     def change(tx, entry, _entries):
-        require_editable(entry)
+        require_editable(entry, args)
         kind = entry["kind"]
         changes = []
 

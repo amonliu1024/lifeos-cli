@@ -140,7 +140,7 @@ def date_in_period(value, args):
 
 
 def matches_period(item, args):
-    """A finished entry is never edited again, so updated_at is when it ended."""
+    """A finished entry's updated_at never moves once it ends, so it is when it ended."""
     return date_in_period(timestamp_date(item, "updated_at"), args)
 
 

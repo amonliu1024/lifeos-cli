@@ -582,6 +582,17 @@ class EntryWorkflowTest(CLITestCase):
         refused = self.run_cli("entry-update", task_id, "--text", "改一下", check=False)
         self.assertIn("不能再修改", refused.stderr)
 
+        entries = self.load_json("entries.json")
+        next(item for item in entries["entries"] if item["id"] == task_id)["updated_at"] = "2026-01-05T18:00:00+08:00"
+        (self.data_dir / "entries.json").write_text(json.dumps(entries, ensure_ascii=False), encoding="utf-8")
+        self.run_cli("entry-update", task_id, "--context", "客户要的", "--note", "已交付给客户", "--source", "x")
+        task = self.entry(task_id)
+        self.assertEqual(
+            ("done", "客户要的", "已交付给客户", "2026-01-05T18:00:00+08:00"),
+            (task["status"], task["context"], task["note"], task["updated_at"]),
+        )
+        self.assertEqual("entry_updated", self.events()[-1]["kind"])
+
     def test_deadline_changes_keep_their_own_history(self):
         task_id = self.add("task-add", "--text", "有截止的事", "--due", "2026-12-01", "--source", "x")
         postponed = self.run_cli("task-reschedule", task_id, "--due", "2026-12-20", "--source", "x", check=False)
@@ -658,8 +669,15 @@ class EntryWorkflowTest(CLITestCase):
             "term-add", "--name", "凯健", "--kind", "person", "--description", "合成人员", "--source", "x"
         )
         task_id = self.add("task-add", "--text", "他负责", "--owner", "凯健", "--source", "x")
+        done_id = self.add("task-add", "--text", "他交付过的", "--owner", "凯健", "--source", "x")
+        self.run_cli("task-done", done_id, "--note", "已交付", "--source", "x")
+        entries = self.load_json("entries.json")
+        next(item for item in entries["entries"] if item["id"] == done_id)["updated_at"] = "2026-01-05T18:00:00+08:00"
+        (self.data_dir / "entries.json").write_text(json.dumps(entries, ensure_ascii=False), encoding="utf-8")
         self.run_cli("term-update", term_id, "--name", "凯健老师", "--source", "x")
         self.assertEqual("凯健老师", self.entry(task_id)["owner"])
+        done = self.entry(done_id)
+        self.assertEqual(("凯健老师", "2026-01-05T18:00:00+08:00"), (done["owner"], done["updated_at"]))
         self.validate_runtime()
 
     def test_entries_query_and_review(self):
