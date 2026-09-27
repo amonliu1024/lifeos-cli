@@ -195,11 +195,6 @@ def current_runtime_active():
 
 def read_current_data_unvalidated():
     if not current_runtime_active():
-        if legacy_runtime_present():
-            fail(
-                "当前 Runtime 仍是 v1 结构（事项、待办、闪念、成果胶囊）；"
-                "请先运行 lifeos work migrate-v2 --plan 查看迁移清单"
-            )
         fail("当前 Runtime 尚未初始化；请先运行 lifeos work init")
     data = (
         read_json(PROJECTS_PATH),
@@ -207,12 +202,6 @@ def read_current_data_unvalidated():
         read_json(GLOSSARY_PATH),
     )
     return data
-
-
-def legacy_runtime_present():
-    """A v1 Runtime still carries tasks.json and has no entries.json."""
-
-    return (DATA_DIR / "tasks.json").exists() and not ENTRIES_PATH.exists()
 
 
 def read_current_data():
@@ -592,7 +581,6 @@ __all__ = [
     "command_refresh",
     "command_init",
     "command_validate",
-    "legacy_runtime_present",
     "current_runtime_active",
     "current_view_contents",
     "current_validation_errors",

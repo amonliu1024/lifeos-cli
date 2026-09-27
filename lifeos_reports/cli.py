@@ -81,19 +81,6 @@ def _read_body_file(body_file: Path) -> str:
     return body
 
 
-def _with_migration_recovery(handler: Any) -> Any:
-    """Recover a terminated Reports migration before serving any command."""
-
-    def recovered(args: Any) -> Any:
-        try:
-            store.recover_activity_id_migration(args.reports_root)
-        except (OSError, ReportError) as exc:
-            _fail(str(exc))
-        return handler(args)
-
-    return recovered
-
-
 def command_begin(args: Any) -> None:
     reports_root: Path = args.reports_root
     day: date = args.day
@@ -578,40 +565,6 @@ def command_validate(args: Any) -> None:
         raise SystemExit(1)
 
 
-def command_migrate_activity_ids(args: Any) -> None:
-    """Preview or apply the one-time breaking Activity ID migration."""
-
-    reports_root: Path = args.reports_root
-    try:
-        if args.apply:
-            with store.locked(reports_root):
-                planned = store.plan_activity_id_migration(reports_root)
-                backup = store.apply_activity_id_migration(reports_root, planned)
-        else:
-            planned = store.plan_activity_id_migration(reports_root)
-            backup = None
-    except (OSError, ReportError) as exc:
-        _fail(str(exc))
-
-    changed_ids = sum(item[3] for item in planned)
-    payload = {
-        "mode": "apply" if args.apply else "dry-run",
-        "checked_files": len(store.activity_id_migration_paths(reports_root)),
-        "changed_files": len(planned),
-        "changed_ids": changed_ids,
-        "backup": str(backup) if backup else None,
-    }
-    action = "已迁移" if args.apply else "将迁移"
-    _emit(
-        args,
-        payload,
-        [
-            f"{action} {len(planned)} 份日报中的 {changed_ids} 个 Activity ID。"
-            + (f" 备份：{backup}" if backup else "")
-        ],
-    )
-
-
 def register_reports_parser(domains: Any, data_dir: Path) -> None:
     reports = domains.add_parser(
         "reports",
@@ -653,7 +606,7 @@ def register_reports_parser(domains: Any, data_dir: Path) -> None:
         help="确认状态时先保留 superseded 快照再重建草稿；draft 不需要此选项",
     )
     command.add_argument("--json", action="store_true", help="以 JSON 输出路径、状态与窗口")
-    command.set_defaults(handler=_with_migration_recovery(command_begin))
+    command.set_defaults(handler=command_begin)
 
     command = commands.add_parser(
         "write",
@@ -742,7 +695,7 @@ def register_reports_parser(domains: Any, data_dir: Path) -> None:
         help="正文引用的 Git commit ID（repo_key@完整 SHA；可重复，必须唯一）",
     )
     command.add_argument("--json", action="store_true", help="以 JSON 输出写入后的状态与计数")
-    command.set_defaults(handler=_with_migration_recovery(command_write))
+    command.set_defaults(handler=command_write)
 
     command = commands.add_parser(
         "confirm",
@@ -761,7 +714,7 @@ def register_reports_parser(domains: Any, data_dir: Path) -> None:
         help="要确认的自然日（Asia/Shanghai）",
     )
     command.add_argument("--json", action="store_true", help="以 JSON 输出校验与状态变化")
-    command.set_defaults(handler=_with_migration_recovery(command_confirm))
+    command.set_defaults(handler=command_confirm)
 
     command = commands.add_parser(
         "path",
@@ -780,7 +733,7 @@ def register_reports_parser(domains: Any, data_dir: Path) -> None:
         help="要查询的自然日（Asia/Shanghai）",
     )
     command.add_argument("--json", action="store_true", help="以 JSON 输出路径、状态与快照列表")
-    command.set_defaults(handler=_with_migration_recovery(command_path))
+    command.set_defaults(handler=command_path)
 
     command = commands.add_parser(
         "prune",
@@ -799,7 +752,7 @@ def register_reports_parser(domains: Any, data_dir: Path) -> None:
     )
     command.add_argument("--apply", action="store_true", help="真正删除；省略时只列出将删除的快照")
     command.add_argument("--json", action="store_true", help="以 JSON 输出计划或已删除的快照")
-    command.set_defaults(handler=_with_migration_recovery(command_prune))
+    command.set_defaults(handler=command_prune)
 
     command = commands.add_parser(
         "list",
@@ -832,7 +785,7 @@ def register_reports_parser(domains: Any, data_dir: Path) -> None:
         help="只列出指定状态；启用时不报告窗口缺失日",
     )
     command.add_argument("--json", action="store_true", help="以 JSON 输出日报、总数与缺失日")
-    command.set_defaults(handler=_with_migration_recovery(command_list))
+    command.set_defaults(handler=command_list)
 
     periodic = commands.add_parser(
         "periodic",
@@ -884,7 +837,7 @@ def register_reports_parser(domains: Any, data_dir: Path) -> None:
         help="本页最多返回的日报数，1 到 31（默认 7）",
     )
     command.add_argument("--json", action="store_true", help="以 JSON 输出来源正文与窗口")
-    command.set_defaults(handler=_with_migration_recovery(command_periodic_sources))
+    command.set_defaults(handler=command_periodic_sources)
 
     command = periodic_commands.add_parser(
         "begin",
@@ -901,7 +854,7 @@ def register_reports_parser(domains: Any, data_dir: Path) -> None:
         help="确认状态时先保留 superseded 快照再重建草稿",
     )
     command.add_argument("--json", action="store_true", help="以 JSON 输出路径、来源和状态")
-    command.set_defaults(handler=_with_migration_recovery(command_periodic_begin))
+    command.set_defaults(handler=command_periodic_begin)
 
     command = periodic_commands.add_parser(
         "write",
@@ -920,7 +873,7 @@ def register_reports_parser(domains: Any, data_dir: Path) -> None:
         help="Markdown 正文文件；使用 - 从标准输入读取",
     )
     command.add_argument("--json", action="store_true", help="以 JSON 输出写入后的状态")
-    command.set_defaults(handler=_with_migration_recovery(command_periodic_write))
+    command.set_defaults(handler=command_periodic_write)
 
     command = periodic_commands.add_parser(
         "confirm",
@@ -933,7 +886,7 @@ def register_reports_parser(domains: Any, data_dir: Path) -> None:
     )
     add_period_argument(command)
     command.add_argument("--json", action="store_true", help="以 JSON 输出校验与状态变化")
-    command.set_defaults(handler=_with_migration_recovery(command_periodic_confirm))
+    command.set_defaults(handler=command_periodic_confirm)
 
     command = periodic_commands.add_parser(
         "path",
@@ -941,7 +894,7 @@ def register_reports_parser(domains: Any, data_dir: Path) -> None:
     )
     add_period_argument(command)
     command.add_argument("--json", action="store_true", help="以 JSON 输出路径和状态")
-    command.set_defaults(handler=_with_migration_recovery(command_periodic_path))
+    command.set_defaults(handler=command_periodic_path)
 
     command = periodic_commands.add_parser(
         "list",
@@ -954,7 +907,7 @@ def register_reports_parser(domains: Any, data_dir: Path) -> None:
         help="只列出指定状态",
     )
     command.add_argument("--json", action="store_true", help="以 JSON 输出周期报列表")
-    command.set_defaults(handler=_with_migration_recovery(command_periodic_list))
+    command.set_defaults(handler=command_periodic_list)
 
     command = commands.add_parser(
         "validate",
@@ -966,25 +919,4 @@ def register_reports_parser(domains: Any, data_dir: Path) -> None:
         epilog="validate 不创建、不修改、不确认任何报告。",
     )
     command.add_argument("--json", action="store_true", help="以 JSON 输出检查范围、问题与 ok 状态")
-    command.set_defaults(handler=_with_migration_recovery(command_validate))
-
-    command = commands.add_parser(
-        "migrate-activity-ids",
-        help="把历史日报中的旧长 Activity ID 一次性迁移为短 ID",
-        description=(
-            "默认只读预演 current 与 superseded 日报的 Activity ID 迁移。"
-            "--apply 会先备份完整 Reports 目录，再只改 frontmatter 的 activity_ids；"
-            "不读取或重扫 Sessions 来源。"
-        ),
-        epilog=(
-            "这是破坏式一次性迁移：新版本不兼容旧长 ID。"
-            "应用前会解析全部目标并检查短 ID 碰撞，正文和其他字段不变。"
-        ),
-    )
-    command.add_argument(
-        "--apply",
-        action="store_true",
-        help="应用迁移；省略时只报告将变化的文件和 ID 数",
-    )
-    command.add_argument("--json", action="store_true", help="以 JSON 输出迁移计划或结果")
-    command.set_defaults(handler=_with_migration_recovery(command_migrate_activity_ids))
+    command.set_defaults(handler=command_validate)

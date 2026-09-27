@@ -59,4 +59,4 @@
 
 Daily 交接候选时保留本人原话、事实来源、已确认字段和不可变来源身份。Work 返回记录或事件 ID 后，Daily 只保存该 ID 与结果摘要，不复制 Runtime 内容。
 
-入口、Schema、Project Catalog、权限或验证失败时报告具体阶段和原始错误，保持账本不变；先按原幂等键回读，不通过换参数或换键把失败改写成已完成。发现单个跟踪项目暂时不可用时保留 `project_key` 和 Work 记录，只报告 linkage warning，不猜测路径或自动取消跟踪。Runtime 仍是 v1 结构时，先用 `lifeos work migrate-v2 --plan` 列出迁移清单交本人逐条决定，本人确认决定文件后才 `--apply`；不直接编辑 Runtime。
+入口、Schema、Project Catalog、权限或验证失败时报告具体阶段和原始错误，保持账本不变；先按原幂等键回读，不通过换参数或换键把失败改写成已完成。发现单个跟踪项目暂时不可用时保留 `project_key` 和 Work 记录，只报告 linkage warning，不猜测路径或自动取消跟踪。

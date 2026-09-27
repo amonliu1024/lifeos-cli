@@ -1,8 +1,8 @@
 """Argparse registration for the LifeOS Work domain.
 
-Domain behavior lives in ``commands`` modules; Runtime initialization,
-maintenance and the v2 migration remain owned by ``runtime`` and
-``migration``. The CLI composition root is ``lifeos_modules``.
+Domain behavior lives in ``commands`` modules; Runtime initialization and
+maintenance remain owned by ``runtime``. The CLI composition root is
+``lifeos_modules``.
 """
 
 import argparse
@@ -23,7 +23,6 @@ from .model import (
     validate_quarter,
 )
 from .runtime import command_init, command_refresh, command_validate
-from .migration import command_migrate_v2
 from .commands.entries import (
     command_entries,
     command_entry_drop,
@@ -68,11 +67,6 @@ QUERY_EPILOG = "只读命令：不会修改事实源、events.jsonl 或派生视
 WRITE_EPILOG = "写入命令：会校验当前 Runtime，更新对应事实源，刷新派生视图并追加一条不可变事件；提供 --source 记录依据，重试请使用稳定的 --idempotency-key。"
 INIT_EPILOG = "初始化只创建全新的当前 Work Runtime，不导入或覆盖任何旧数据；已有任一 Work 文件时立即停止。"
 DATE_EPILOG = "日期语义：--due 只表示结果硬截止；过了才算逾期，7 天内到期算紧急。"
-MIGRATE_EPILOG = (
-    "先用 --plan 列出需要本人决定的事项（--plan --json 输出决定模板），"
-    "填好后用 --apply --decisions 文件 --source 执行；执行前会完整备份 Runtime，"
-    "v1 的事项、闪念、成果胶囊文件在迁移后移除，历史 events.jsonl 不改写。"
-)
 
 
 COMMAND_DESCRIPTIONS = {
@@ -107,7 +101,6 @@ COMMAND_DESCRIPTIONS = {
     "changes": "只读读取不可变变更记录；无时间窗默认返回最近 20 条，提供时间窗时默认返回窗口内全部事件。",
     "refresh": "重建当前派生 Markdown 视图；不改变事实 JSON 或 events.jsonl。",
     "validate": "只读校验当前事实源、项目跟踪关系、不可变变更记录和派生视图的一致性。",
-    "migrate-v2": "一次性把 v1 Runtime（事项、里程碑、待办、闪念、成果胶囊）迁移为 v2：按天记的每一笔。",
 }
 
 
@@ -140,7 +133,6 @@ COMMAND_SUMMARIES = {
     "changes": "读取不可变变更记录（只读）",
     "refresh": "重建派生视图（写入视图）",
     "validate": "校验事实源、事件和视图（只读）",
-    "migrate-v2": "迁移 v1 Runtime 到 v2（写入）",
 }
 
 
@@ -249,8 +241,6 @@ def _annotate_work_parsers(commands):
             command.epilog = INIT_EPILOG
         elif name == "refresh":
             command.epilog = "只写派生 Markdown 视图，不改变事实 JSON 或 events.jsonl。"
-        elif name == "migrate-v2":
-            command.epilog = MIGRATE_EPILOG
         elif name in QUERY_COMMANDS:
             command.epilog = QUERY_EPILOG
         elif name in {"task-add", "task-reschedule"}:
@@ -548,15 +538,5 @@ def register_work_parser(domains):
 
     command = commands.add_parser("validate", help="验证当前事实源、内部审计与派生视图")
     command.set_defaults(handler=command_validate)
-
-    command = commands.add_parser("migrate-v2", help="迁移 v1 Runtime 到 v2")
-    step = command.add_mutually_exclusive_group(required=True)
-    step.add_argument("--plan", action="store_true", help="只读列出迁移清单与需要本人决定的事项。")
-    step.add_argument("--apply", action="store_true", help="按决定文件执行迁移；执行前完整备份。")
-    command.add_argument("--json", action="store_true", help="与 --plan 一起用：输出决定模板 JSON。")
-    command.add_argument("--decisions", metavar="FILE", help="填好的决定文件（--apply 必填）。")
-    add_source_argument(command)
-    add_actor_arguments(command, include_idempotency=False)
-    command.set_defaults(handler=command_migrate_v2)
 
     _annotate_work_parsers(commands)

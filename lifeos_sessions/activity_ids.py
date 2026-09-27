@@ -9,7 +9,6 @@ from typing import Iterable
 
 
 ACTIVITY_ID = re.compile(r"^ACT-[A-Z2-7]{24}$")
-LEGACY_ACTIVITY_ID = re.compile(r"^ACT-([0-9a-f]{64})$")
 
 
 def _encode_digest(digest: bytes) -> str:
@@ -23,15 +22,6 @@ def activity_id(*parts: str) -> str:
 
     digest = hashlib.sha256("\0".join(parts).encode("utf-8")).digest()
     return f"ACT-{_encode_digest(digest)}"
-
-
-def migrate_legacy_activity_id(value: str) -> str:
-    """Convert one legacy full-digest Activity ID without reading Session content."""
-
-    matched = LEGACY_ACTIVITY_ID.fullmatch(value)
-    if not matched:
-        raise ValueError(f"不是旧版 Activity ID：{value}")
-    return f"ACT-{_encode_digest(bytes.fromhex(matched.group(1)))}"
 
 
 def ensure_unique_activity_ids(values: Iterable[str]) -> None:

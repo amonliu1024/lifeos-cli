@@ -4,6 +4,11 @@
 
 ## Unreleased
 
+### 不兼容变更
+
+- 移除 `lifeos work migrate-v2`：v1 Runtime 不再能用当前版本迁移，普通命令遇到 v1 Runtime 也不再提示迁移，只报告 Runtime 尚未初始化。
+- 移除 `lifeos reports migrate-activity-ids`：含旧长 Activity ID 的日报不再能用当前版本转换成短 ID。
+
 ### 变更
 
 - Web 工作台改用霞鹜文楷（LXGW WenKai）一套字体，中文、英文与数字都用它；发行包内置常用汉字的网页字体子集，生僻字由系统字体补上，不再包含 Geist 字体文件。

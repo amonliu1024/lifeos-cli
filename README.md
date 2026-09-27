@@ -82,7 +82,7 @@ Work 的当前事实只有三类：按天记下的每一笔（`entries.json`）�
 
 `events.jsonl` 是追加式审计历史：每次写入记下时间、操作者、动作、涉及的一笔、来源（`--source`）、状态的前后值和当时的批注，以及截止时间改动的前后日期与原因码。记录只保留当前那一句批注，之前怎么变过来的都在历史里，`lifeos work show ID` 会一并列出。
 
-从 v1（事项、里程碑、待办、闪念、成果胶囊）升级时，用 `lifeos work migrate-v2 --plan` 查看需要你逐条决定的事项，填好决定文件后 `--apply`；执行前完整备份 Runtime，历史审计事件不改写。精确字段、状态和写入参数以相应命令的 `--help`、代码及测试为准，写入安全机制见 [ARCHITECTURE.md](ARCHITECTURE.md#安全属性)。
+精确字段、状态和写入参数以相应命令的 `--help`、代码及测试为准，写入安全机制见 [ARCHITECTURE.md](ARCHITECTURE.md#安全属性)。
 
 ## 项目关系
 
