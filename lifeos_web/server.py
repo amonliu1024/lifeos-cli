@@ -28,6 +28,7 @@ STATIC_FILES = {
     "/": ("index.html", "text/html; charset=utf-8"),
     "/assets/app.css": ("app.css", "text/css; charset=utf-8"),
     "/assets/app.js": ("app.js", "text/javascript; charset=utf-8"),
+    "/assets/cotton-fine.webp": ("cotton-fine.webp", "image/webp"),
     "/assets/lifeos-logo.svg": ("lifeos-logo.svg", "image/svg+xml"),
     "/assets/favicon.svg": ("favicon.svg", "image/svg+xml"),
     "/assets/fonts/LXGWWenKai-Regular.woff2": ("fonts/LXGWWenKai-Regular.woff2", "font/woff2"),
