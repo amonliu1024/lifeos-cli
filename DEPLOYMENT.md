@@ -19,3 +19,4 @@ LifeOS 以一个 Python distribution 和同版本的 `skills/lifeos/` 交付。�
 - CLI 恢复上一已验证 Tag 对应的完整 distribution，不替换单个模块。
 - Skill 恢复上一完整 `skills/lifeos/` 目录，再核对宿主发现。
 - 真实个人 Runtime 不随代码或 Skill 自动降级；Schema、配置或数据恢复需要独立备份、兼容判断和授权。
+- 换机器时，个人 Runtime 从镜像恢复：新机器能 SSH 到镜像目标后，克隆本仓库，运行 `scripts/install-local.sh` 和两个 Skill 同步脚本；`lifeos config init` 新建私人配置，再用 `lifeos mirror configure` 与 `lifeos config project-root add` 配回镜像目标和项目发现根；`rsync -a <镜像目标>/data/ ~/.local/share/lifeos/` 拉回 Work 事实、审计事件和日报，最后 `lifeos work refresh` 重建派生视图、`lifeos work validate` 校验。Sessions、Git、DChat、日历证据、备份与私人配置不在镜像里，不随之恢复。
