@@ -1,5 +1,6 @@
 import json
 import os
+import re
 import shutil
 import subprocess
 import sys
@@ -99,6 +100,12 @@ class MirrorCLITest(unittest.TestCase):
         self.assertIn("只读 Web 工作台", detail["body"])
         self.assertTrue((site / "index.html").is_file())
         self.assertTrue((site / "assets" / "app.js").is_file())
+        # 站点可以挂在子路径（如 /lifeos/）下：前端只用相对路径引用资源和接口
+        front = (site / "index.html", site / "assets" / "app.js", site / "assets" / "app.css")
+        self.assertFalse([
+            path.name for path in front
+            if re.search(r"[\"'`(]/(assets|api)/", path.read_text(encoding="utf-8"))
+        ])
         captured = [path.relative_to(self.capture).as_posix() for path in self.capture.rglob("*")]
         self.assertFalse(
             [item for item in captured if any(

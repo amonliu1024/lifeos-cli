@@ -1,6 +1,6 @@
 @font-face {
   font-family: "LXGW WenKai";
-  src: url("/assets/fonts/LXGWWenKai-Regular.woff2") format("woff2");
+  src: url("fonts/LXGWWenKai-Regular.woff2") format("woff2");
   font-display: swap;
   font-style: normal;
   font-weight: 400;
@@ -8,7 +8,7 @@
 
 @font-face {
   font-family: "LXGW WenKai";
-  src: url("/assets/fonts/LXGWWenKai-Medium.woff2") format("woff2");
+  src: url("fonts/LXGWWenKai-Medium.woff2") format("woff2");
   font-display: swap;
   font-style: normal;
   font-weight: 500 600;
@@ -99,7 +99,7 @@ body::before, .topbar::before {
   z-index: -1;
   inset: 0;
   pointer-events: none;
-  background: url("/assets/cotton-fine.webp") repeat;
+  background: url("cotton-fine.webp") repeat;
   filter: grayscale(1) brightness(1.1);
   mix-blend-mode: multiply;
   opacity: .3;

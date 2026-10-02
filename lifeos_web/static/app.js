@@ -459,7 +459,7 @@ async function loadReport(day, { skeleton = true } = {}) {
   if (skeleton) state.report = null;
   if (state.tab === "daily") renderDaily();
   try {
-    const response = await fetch(`/api/reports/${encodeURIComponent(day)}`, { cache: "no-store" });
+    const response = await fetch(`api/reports/${encodeURIComponent(day)}`, { cache: "no-store" });
     const payload = await response.json();
     if (!response.ok) throw new Error(payload.error || "日报读取失败");
     if (requestId !== reportRequest) return;
@@ -475,7 +475,7 @@ async function loadReport(day, { skeleton = true } = {}) {
 async function openReport() {
   if (!state.reportDay) return;
   try {
-    const response = await fetch(`/api/reports/${encodeURIComponent(state.reportDay)}/open`, {
+    const response = await fetch(`api/reports/${encodeURIComponent(state.reportDay)}/open`, {
       method: "POST",
       headers: { "X-LifeOS-Intent": "open-report" },
     });
@@ -536,7 +536,7 @@ document.addEventListener("keydown", (event) => { if (event.key === "Escape") cl
 async function refreshSnapshot({ initial = false } = {}) {
   if (snapshotRequest) return snapshotRequest;
   snapshotRequest = (async () => {
-    const response = await fetch("/api/snapshot", { cache: "no-store" });
+    const response = await fetch("api/snapshot", { cache: "no-store" });
     const payload = await response.json();
     if (!response.ok) throw new Error(payload.error || "本地账本读取失败");
     const initializing = initial || !state.snapshot;

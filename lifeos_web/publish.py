@@ -2,7 +2,8 @@
 
 The published site answers the same ``/api/snapshot`` and ``/api/reports/<day>``
 paths as the loopback server, so the unchanged front end runs on any static
-file host. Project names are resolved here, where the Project Catalog exists;
+file host; the front end references assets and API paths relatively, so the
+site works at the host root or under a sub-path such as ``/lifeos/``. Project names are resolved here, where the Project Catalog exists;
 the host never needs project manifests or a LifeOS install.
 """
 
