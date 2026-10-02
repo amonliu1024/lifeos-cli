@@ -59,10 +59,10 @@ lifeos work init --self-name "你的名字" --source "本人确认"
 - `lifeos git`：只读本地提交作为证据，全程不访问远端
 - `lifeos dchat`：按需启用的 DChat 证据，通过显式配置的本机 wrapper 工作
 - `lifeos calendar`：按需启用的 D-Chat 日历证据，复用同一个 wrapper，只读当天排了哪些会
-- `lifeos config`：Git 外私人配置的初始化与校验
+- `lifeos config`：Git 外私人配置的初始化与校验，以及项目发现根和镜像目标的设置
 - `lifeos capabilities`：无副作用地查看本机哪些能力已就绪、已禁用或不可用
 - `lifeos web`：在本机回环地址启动只读工作台
-- `lifeos mirror`：把 Work 数据、日报与只读工作台单向镜像到自己的 SSH 服务器
+- `lifeos push`：把 Work 数据、日报与只读工作台单向镜像到自己的 SSH 服务器
 
 ## 只读 Web 工作台
 
@@ -70,7 +70,7 @@ lifeos work init --self-name "你的名字" --source "本人确认"
 
 ## 服务器镜像
 
-`lifeos mirror configure --target lab:lifeos-mirror` 在私有配置里记下一个 SSH 目标，之后每次手动运行 `lifeos mirror push`，就用 rsync 把两部分单向推过去：`data/` 是 Work 事实、审计事件和日报原文，`site/` 是在本机渲染好的只读工作台。目标机不需要安装 LifeOS，用静态文件服务托管 `site/` 即可浏览，挂在根目录或子路径下都行，项目名称已在本机解析，例如用 Tailscale 挂到私有地址的 `/lifeos/` 下：`tailscale serve --bg --set-path /lifeos ~/lifeos-mirror/site`。推送后的文件只有 SSH 账户本人可读，静态服务需以该账户或 root（如 tailscale serve）运行，其他普通用户读不到镜像内容。`--dry-run` 只列出将要变化的文件。派生视图、Sessions、Git、DChat 证据、备份与私有配置不在推送范围内。
+`lifeos config mirror --target lab:lifeos-mirror` 在私有配置里记下一个 SSH 目标，之后每次手动运行 `lifeos push`，就用 rsync 把两部分单向推过去：`data/` 是 Work 事实、审计事件和日报原文，`site/` 是在本机渲染好的只读工作台。目标机不需要安装 LifeOS，用静态文件服务托管 `site/` 即可浏览，挂在根目录或子路径下都行，项目名称已在本机解析，例如用 Tailscale 挂到私有地址的 `/lifeos/` 下：`tailscale serve --bg --set-path /lifeos ~/lifeos-mirror/site`。推送后的文件只有 SSH 账户本人可读，静态服务需以该账户或 root（如 tailscale serve）运行，其他普通用户读不到镜像内容。`lifeos push -n` 只列出将要变化的文件。派生视图、Sessions、Git、DChat 证据、备份与私有配置不在推送范围内。
 
 ## 工作模型
 

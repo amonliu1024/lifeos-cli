@@ -14,7 +14,7 @@ lifeos-cli 仓库
 $LIFEOS_HOME（默认 ~/.local/share/lifeos）
   Work 权威事实、审计事件、证据存储、日报与周期报
                     |
-                    | lifeos mirror push（手动、单向）
+                    | lifeos push（手动、单向）
                     v
 镜像目标 <target>/（可选）
   data/  Work 事实、审计事件、日报与周期报原文
@@ -33,7 +33,7 @@ $LIFEOS_HOME（默认 ~/.local/share/lifeos）
 - DChat 扫描从 Project Catalog 派生群 VID 并集；同一份清单关系同时决定群正文采集与项目索引，不用 Runtime 映射维护第二套 scope。
 - `lifeos_config` 负责本机私有模块设置和无副作用的能力检查。
 - `lifeos_web` 把现有 Work 与 Reports 读取入口投影为仅回环可达的只读页面；投影不落盘、不缓存，也不拥有任何个人事实。
-- `lifeos_mirror` 在 Work 与 Reports 锁内暂存 `data/`（Work 事实、审计事件、`reports/`）并调用 `lifeos_web.publish` 渲染 `site/`，再用 rsync 单向推到私有配置 `modules.mirror.target`；`site/` 以与回环服务相同的 `/api/*` 路径保存 JSON，前端不区分宿主，镜像端只读、不回写本机。
+- `lifeos_mirror`（命令 `lifeos push`）在 Work 与 Reports 锁内暂存 `data/`（Work 事实、审计事件、`reports/`）并调用 `lifeos_web.publish` 渲染 `site/`，再用 rsync 单向推到私有配置 `modules.mirror.target`；`site/` 以与回环服务相同的 `/api/*` 路径保存 JSON，前端不区分宿主，镜像端只读、不回写本机。
 
 是否在某台机器上启用内置模块，始终是本机私有配置的选择。
 
@@ -52,8 +52,8 @@ $LIFEOS_HOME（默认 ~/.local/share/lifeos）
 | DChat 原始 revision 与索引 | DChat Runtime | `lifeos dchat scan` |
 | 日历日程快照与循环会议出席名单 | Calendar Runtime | `lifeos calendar scan`、`lifeos calendar series set` |
 | 日报与周期报 | Reports Runtime | `lifeos reports` 与 Agent Skill |
-| 镜像目标地址 | 私有配置 `modules.mirror` | `lifeos mirror configure` |
-| 镜像目标内容 | 本机 Runtime（镜像端只读） | 仅 `lifeos mirror push` 整体替换 `data/` 与 `site/` |
+| 镜像目标地址 | 私有配置 `modules.mirror` | `lifeos config mirror` |
+| 镜像目标内容 | 本机 Runtime（镜像端只读） | 仅 `lifeos push` 整体替换 `data/` 与 `site/` |
 
 Reports Runtime 以 `daily/` 保存由本机辅助证据生成的自然日日报，以 `periodic/` 保存只消费 confirmed 日报的周、月、季度、半年和年度报告。两类报告复用同一互斥锁、私有权限、原子替换与 draft/confirmed 状态；CLI 拥有周期窗口与状态，Agent Skill 拥有正文。逐日来源覆盖只在生成时由 CLI 计算和返回，不写入周期报。
 
@@ -113,4 +113,4 @@ Pi Adapter 读取 `~/.pi/agent/sessions` 的 v2/v3 树形 JSONL，以原生 user
 - Runtime 与配置默认位于仓库之外，并使用仅属主可访问的权限。
 - 只读能力检查不会创建配置目录或 Runtime 目录。
 - DChat 与日历在显式配置前保持禁用；日历只读，不创建、修改或回复任何日程。
-- 数据只在显式运行 `lifeos mirror push` 时离开本机，范围由 `lifeos_mirror.core` 的白名单唯一决定；Sessions、Git、DChat、日历证据、备份与配置不在其中。
+- 数据只在显式运行 `lifeos push` 时离开本机，范围由 `lifeos_mirror.core` 的白名单唯一决定；Sessions、Git、DChat、日历证据、备份与配置不在其中。

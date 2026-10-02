@@ -1,4 +1,4 @@
-"""``lifeos mirror`` public command composition."""
+"""``lifeos push`` public command composition."""
 
 from __future__ import annotations
 
@@ -8,7 +8,7 @@ import sys
 from pathlib import Path
 from typing import Any
 
-from lifeos_config.core import ConfigError, configure_mirror, load_config
+from lifeos_config.core import ConfigError, load_config
 
 from .core import MirrorError, push
 
@@ -18,26 +18,15 @@ def _fail(message: str) -> None:
     raise SystemExit(1)
 
 
-def command_configure(args: Any) -> None:
-    try:
-        payload = configure_mirror(args.target)
-    except ConfigError as exc:
-        _fail(str(exc))
-    if args.json:
-        print(json.dumps(payload, ensure_ascii=False, indent=2))
-        return
-    print(f"镜像目标{'已更新' if payload['changed'] else '未变化'}：{payload['target']}")
-
-
 def command_push(args: Any) -> None:
     try:
         target = load_config().mirror_target
     except ConfigError as exc:
         _fail(str(exc))
     if target is None:
-        _fail("尚未配置镜像目标，先运行 lifeos mirror configure --target host:path")
+        _fail("尚未配置镜像目标，先运行 lifeos config mirror --target host:path")
     try:
-        payload = push(target, args.reports_root, dry_run=args.dry_run)
+        payload = push(target, args.reports_root, dry_run=args.n)
     except MirrorError as exc:
         _fail(str(exc))
     if args.json:
@@ -50,27 +39,22 @@ def command_push(args: Any) -> None:
     )
 
 
-def register_mirror_parser(domains: argparse._SubParsersAction, data_dir: Path) -> None:
-    mirror = domains.add_parser(
-        "mirror",
+def register_push_parser(domains: argparse._SubParsersAction, data_dir: Path) -> None:
+    command = domains.add_parser(
+        "push",
         help="把 Work 数据、日报与只读站点单向镜像到自己的服务器",
         description=(
-            "通过 SSH 与 rsync 向私有配置中的目标推送两部分：data/ 是 Work 事实、审计事件和日报，"
+            "通过 SSH 与 rsync 向私有配置中的镜像目标推送两部分：data/ 是 Work 事实、审计事件和日报，"
             "site/ 是在本机渲染好的只读工作台静态文件，由以 SSH 账户运行的静态服务作为站点根目录托管；"
             "推送后的文件只有该账户可读。"
             "目标下这两个目录与本机保持一致，本机已删除的日报也会在目标端删除。"
+            "镜像目标用 lifeos config mirror --target host:path 设置。"
         ),
         epilog="派生视图、Sessions、Git、DChat 证据、备份与私有配置从不离开本机。",
     )
-    commands = mirror.add_subparsers(dest="command", required=True)
-    command = commands.add_parser("configure", help="设置镜像目标（写入私有配置）")
-    command.add_argument("--target", required=True, help="SSH 目标 host:path，例如 lab:lifeos-mirror")
-    command.add_argument("--json", action="store_true")
-    command.set_defaults(handler=command_configure)
-    command = commands.add_parser("push", help="生成只读站点并与 Work 数据、日报一起推送到镜像目标")
-    command.add_argument("--dry-run", action="store_true", help="只列出将要变化的文件，不写入目标")
+    command.add_argument("-n", action="store_true", help="只预览会发生的变化，不真正推送")
     command.add_argument("--json", action="store_true")
     command.set_defaults(handler=command_push, reports_root=data_dir / "reports")
 
 
-__all__ = ["register_mirror_parser"]
+__all__ = ["register_push_parser"]

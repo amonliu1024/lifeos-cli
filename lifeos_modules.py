@@ -23,7 +23,7 @@ ROOT_EPILOG = """领域边界：
   calendar 只读 D-Chat 日历日程，维护私有快照与循环会议出席名单；不改日程、不回复邀请、不写 Work。
   reports  日报与周期报的结构和状态；正文由 lifeos Skill 的对应分支维护。
   web      只读本地工作台；只监听回环地址，不写 Work、日报或其它 Runtime。
-  mirror   把 Work 数据、日报与本机渲染的只读站点推到私有配置的 SSH 目标；证据、备份与配置不离开本机。
+  push     把 Work 数据、日报与本机渲染的只读站点推到私有配置的 SSH 目标；证据、备份与配置不离开本机。
 
 所有时间窗口使用半开区间 [from, to)；具体参数、默认值和写入边界以对应子命令 --help 为准。"""
 
@@ -44,7 +44,7 @@ HOME_TEMPLATE = """{brand}
   lifeos work entries --live         查看仍在进行中的
   lifeos work show ID                查看一条记录的原始内容
   lifeos web serve --open            在浏览器打开本地工作台
-  lifeos mirror push                 把工作台同步到自己的服务器
+  lifeos push                        把工作台同步到自己的服务器
   lifeos work task-add --help        记一条待办
   lifeos work note-add --help        记一条随记
   lifeos work insight-add --help     留下一条洞见
@@ -140,10 +140,10 @@ def _web(domains: Any, context: ModuleContext) -> None:
     register_web_parser(domains, context.data_dir)
 
 
-def _mirror(domains: Any, context: ModuleContext) -> None:
-    from lifeos_mirror.cli import register_mirror_parser
+def _push(domains: Any, context: ModuleContext) -> None:
+    from lifeos_mirror.cli import register_push_parser
 
-    register_mirror_parser(domains, context.data_dir)
+    register_push_parser(domains, context.data_dir)
 
 
 COMMAND_MODULES = (
@@ -157,7 +157,7 @@ COMMAND_MODULES = (
     CommandModule("reports", _reports),
     CommandModule("project", _project),
     CommandModule("web", _web),
-    CommandModule("mirror", _mirror),
+    CommandModule("push", _push),
 )
 
 

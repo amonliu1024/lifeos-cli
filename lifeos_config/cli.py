@@ -10,6 +10,7 @@ from typing import Any
 from .capabilities import capability_report
 from .core import (
     ConfigError,
+    configure_mirror,
     configure_project_root,
     initialize_config,
     load_config,
@@ -49,6 +50,18 @@ def command_config_validate(args: Any) -> None:
         _emit(payload, True)
     else:
         print(f"LifeOS 配置校验通过：{config.path}")
+
+
+def command_config_mirror(args: Any) -> None:
+    try:
+        payload = configure_mirror(args.target)
+    except ConfigError as exc:
+        print(f"lifeos: {exc}", file=sys.stderr)
+        raise SystemExit(1)
+    if args.json:
+        _emit(payload, True)
+        return
+    print(f"镜像目标{'已更新' if payload['changed'] else '未变化'}：{payload['target']}")
 
 
 def command_capabilities(args: Any) -> None:
@@ -109,6 +122,10 @@ def register_config_parser(domains: argparse._SubParsersAction) -> None:
     command = commands.add_parser("validate", help="校验私人配置")
     command.add_argument("--json", action="store_true")
     command.set_defaults(handler=command_config_validate)
+    command = commands.add_parser("mirror", help="设置 lifeos push 的镜像目标")
+    command.add_argument("--target", required=True, help="SSH 目标 host:path，例如 lab:lifeos-mirror")
+    command.add_argument("--json", action="store_true")
+    command.set_defaults(handler=command_config_mirror)
     project_root = commands.add_parser("project-root", help="维护项目动态发现根")
     project_commands = project_root.add_subparsers(
         dest="project_root_command", required=True

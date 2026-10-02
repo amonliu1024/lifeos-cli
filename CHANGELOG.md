@@ -8,13 +8,14 @@
 
 - 移除 `lifeos work migrate-v2`：v1 Runtime 不再能用当前版本迁移，普通命令遇到 v1 Runtime 也不再提示迁移，只报告 Runtime 尚未初始化。
 - 移除 `lifeos reports migrate-activity-ids`：含旧长 Activity ID 的日报不再能用当前版本转换成短 ID。
+- 推送到服务器改为 `lifeos push`，预览改为 `lifeos push -n`；设置镜像目标改为 `lifeos config mirror --target host:path`。`lifeos mirror` 整组命令移除，已配置的镜像目标照常生效，不用重新设置。
 
 ### 变更
 
 - Web 工作台改用霞鹜文楷（LXGW WenKai）一套字体，中文、英文与数字都用它；发行包内置常用汉字的网页字体子集，生僻字由系统字体补上，不再包含 Geist 字体文件。
 - 没有项目的一笔统一归到「无项目」（原「不归项目」），Web 工作台按项目分组时这一组总是排在最后；`insights.md` 同样改用这个名字。
 - `lifeos work entry-update` 可以改已了结一笔的背景和批注，了结时间保持不变，历史复盘里的完成日期不受影响；正文、项目、星标、负责人仍不能改。
-- `lifeos mirror push` 推送的只读站点改用相对路径引用页面资源和数据，可以挂在静态服务的子路径下（如 `/lifeos/`），不必独占一个端口或域名。
+- `lifeos push` 推送的只读站点改用相对路径引用页面资源和数据，可以挂在静态服务的子路径下（如 `/lifeos/`），不必独占一个端口或域名。
 
 ### 修复
 

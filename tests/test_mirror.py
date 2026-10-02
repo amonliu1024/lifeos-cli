@@ -71,8 +71,8 @@ class MirrorCLITest(unittest.TestCase):
 
     def test_push_sends_necessary_data_and_published_site(self):
         self.write_runtime()
-        self.run_cli("mirror", "configure", "--target", "lab:lifeos-mirror")
-        result = self.run_cli("mirror", "push", "--json")
+        self.run_cli("config", "mirror", "--target", "lab:lifeos-mirror")
+        result = self.run_cli("push", "--json")
 
         payload = json.loads(result.stdout)
         self.assertEqual(1, payload["reports_published"])
@@ -117,8 +117,8 @@ class MirrorCLITest(unittest.TestCase):
 
     def test_dry_run_does_not_ask_rsync_to_write(self):
         self.write_runtime()
-        self.run_cli("mirror", "configure", "--target", "lab:mirror")
-        result = self.run_cli("mirror", "push", "--dry-run", "--json")
+        self.run_cli("config", "mirror", "--target", "lab:mirror")
+        result = self.run_cli("push", "-n", "--json")
         argv = self.args_file.read_text(encoding="utf-8").splitlines()
         self.assertIn("--dry-run", argv[:argv.index("--")])
         self.assertTrue(json.loads(result.stdout)["dry_run"])
@@ -126,16 +126,16 @@ class MirrorCLITest(unittest.TestCase):
 
     def test_push_requires_configured_target(self):
         self.write_runtime()
-        result = self.run_cli("mirror", "push", check=False)
+        result = self.run_cli("push", check=False)
         self.assertEqual(1, result.returncode)
         self.assertIn("尚未配置镜像目标", result.stderr)
         self.assertFalse(self.args_file.exists())
 
     def test_rsync_failure_is_reported(self):
         self.write_runtime()
-        self.run_cli("mirror", "configure", "--target", "lab:mirror")
+        self.run_cli("config", "mirror", "--target", "lab:mirror")
         self.environment["FAKE_RSYNC_EXIT"] = "255"
-        result = self.run_cli("mirror", "push", check=False)
+        result = self.run_cli("push", check=False)
         self.assertEqual(1, result.returncode)
         self.assertIn("rsync 退出码 255", result.stderr)
 
@@ -144,14 +144,14 @@ class MirrorCLITest(unittest.TestCase):
             "/srv/lifeos", "lab:", "-oProxyCommand=x:y", "lab:-rf", "lab:a b",
             "lab:m;touch${IFS}x", "lab:$(id)", "lab:`id`", "lab:a|b", "lab:a&b", "lab:a'b",
         ):
-            result = self.run_cli("mirror", "configure", f"--target={target}", check=False)
+            result = self.run_cli("config", "mirror", f"--target={target}", check=False)
             self.assertEqual(1, result.returncode, target)
         self.assertFalse(self.config_path.exists())
 
     def test_capabilities_report_mirror_state(self):
         before = json.loads(self.run_cli("capabilities", "--json").stdout)
         self.assertEqual("disabled", before["modules"]["mirror"]["status"])
-        self.run_cli("mirror", "configure", "--target", "lab:mirror")
+        self.run_cli("config", "mirror", "--target", "lab:mirror")
         after = json.loads(self.run_cli("capabilities", "--json").stdout)
         self.assertEqual("ready", after["modules"]["mirror"]["status"])
 
