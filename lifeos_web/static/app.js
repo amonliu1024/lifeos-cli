@@ -417,7 +417,8 @@ function openDetail(id) {
     ${detailSection("负责人", item.owner ? `<p>${text(item.owner)}</p>` : "")}
     ${detailSection("排到", item.month ? `<p>${text(item.month)}</p>` : "")}
     ${detailSection(item.kind === "insight" ? "来由" : "背景", item.context ? `<p>${multiline(item.context)}</p>` : "")}
-    ${detailSection("记在", `<p>${esc(item.logged_on || "")}</p>`)}`;
+    ${detailSection("正文", item.text ? `<p>${multiline(item.text)}</p>` : "")}
+    ${detailSection("记于", `<p>${esc(item.logged_on || "")}</p>`)}`;
   drawerContent.innerHTML = `<header class="drawer-head">${header}</header><div class="drawer-body">${body}</div>`;
   focusBeforeDrawer = document.activeElement;
   document.querySelector(".topbar").setAttribute("inert", "");
