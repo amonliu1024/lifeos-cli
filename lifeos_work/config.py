@@ -49,13 +49,23 @@ ENTRY_STATUS_LABELS = {
     "question": {"open": "没想通", "done": "想通了", "converted": "转成别的", "dropped": "划掉"},
     "insight": {"open": "有效", "dropped": "退役"},
 }
-# 进入这些状态时必须写 note（一句批注）或 ref（指向另一笔）。
+# 进入这些状态时必须写 note（一句进展：结果、原因或答案）或 ref（指向另一笔）。
 NOTE_REQUIRED = {
     "task": {"done", "dropped"},
     "note": {"dropped"},
     "question": {"done", "dropped"},
     "insight": {"dropped"},
 }
+# note 就是进展：还在账上时写现在怎样，了结后按状态换叫法。
+NOTE_LABELS = {
+    "task": {"open": "进展", "scheduled": "为什么以后再做", "done": "完成了什么", "dropped": "为什么划掉"},
+    "note": {"open": "进展", "converted": "进展", "dropped": "为什么划掉"},
+    "question": {"open": "进展", "done": "答案", "converted": "进展", "dropped": "为什么划掉"},
+    "insight": {"open": "写进了哪里", "dropped": "为什么退役"},
+}
+# 改动这些字段时，审计事件记下改前和改后的值；其余字段的变化另有记法（状态、截止、指向）。
+TRACKED_ENTRY_FIELDS = ("text", "context", "note", "project", "owner", "starred")
+TRACKED_FIELD_LABELS = {"text": "正文", "context": "背景", "project": "项目", "owner": "负责人", "starred": "星标"}
 REF_ALLOWED = {
     "task": set(),
     "note": {"converted"},
@@ -92,6 +102,10 @@ def entry_field_order(kind):
 
 def status_label(kind, status):
     return ENTRY_STATUS_LABELS.get(kind, {}).get(status, status)
+
+
+def note_label(kind, status):
+    return NOTE_LABELS.get(kind, {}).get(status, "进展")
 
 
 SCHEDULE_REASON_CODES = {
@@ -133,5 +147,6 @@ URGENT_WINDOW_DAYS = 7
 STALE_DAYS = 30
 __all__ = [name for name in globals() if name.isupper()] + [
     "entry_field_order",
+    "note_label",
     "status_label",
 ]

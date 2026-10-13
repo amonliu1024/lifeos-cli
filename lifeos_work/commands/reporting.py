@@ -4,9 +4,10 @@ import json
 import sys
 from datetime import datetime
 
-from ..config import TIMEZONE
+from ..config import ENTRY_KINDS, TIMEZONE, TRACKED_FIELD_LABELS, note_label
 from ..errors import fail
 from ..model import (
+    entry_timeline,
     event_entry_ids,
     find_item,
     matches_created_period,
@@ -43,12 +44,39 @@ def command_show(args):
     history = [event for event in read_events() if args.id in event_entry_ids(event)]
     if not history:
         return
+    kind = record.get("kind") if record.get("kind") in ENTRY_KINDS else None
+    statuses = (
+        {event.get("event_id"): status for event, status in entry_timeline(record, history)}
+        if kind else {}
+    )
     print("\n历史：")
     for event in history:
         line = f"- {event.get('occurred_at', '?')} · {event.get('kind', '?')} · {event.get('summary', '')}"
         if event.get("status_from") or event.get("status_to"):
             line += f"（{event.get('status_from') or '—'} → {event.get('status_to')}）"
         print(line)
+        for field, change in (event.get("field_changes") or {}).items():
+            label = _field_label(field, kind, statuses.get(event.get("event_id")))
+            print(f"  {label}：{_field_value(field, change.get('to'))}")
+
+
+def _field_label(field, kind, status):
+    if field == "note":
+        return note_label(kind, status)
+    if field == "context" and kind == "insight":
+        return "来由"
+    return TRACKED_FIELD_LABELS.get(field, field)
+
+
+def _field_value(field, value):
+    if field == "starred":
+        return "标星" if value else "去掉星标"
+    if field == "owner" and value is None:
+        return "本人"
+    if value is None or value == "":
+        return "（清空）"
+    # 多段背景保持分段，续行缩进到字段值下面。
+    return str(value).replace("\n", "\n    ")
 
 
 def _project_filter(args, projects_by_key):

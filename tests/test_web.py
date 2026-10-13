@@ -88,6 +88,43 @@ class WebProjectionTest(unittest.TestCase):
         self.assertNotIn("path", snapshot["reports"][0])
         self.assertEqual(before, data)
 
+    def test_progress_is_dated_and_earlier_versions_come_from_the_audit_log(self):
+        data = list(copy.deepcopy(fixture_current_data()))
+        tracked, older = copy.deepcopy(self.entries(data)[:2])
+        tracked.update({"id": "TASK-20260901-001", "status": "done", "note": "研发排进了 11 月"})
+        older.update({"id": "TASK-20260901-002", "note": "迁移前写下的进展"})
+        data[1]["entries"] = [tracked, older]
+
+        def event(at, **fields):
+            return {"occurred_at": f"2026-09-{at}T10:00:00+08:00", "entry_id": "TASK-20260901-001", **fields}
+
+        events = [
+            event("01", kind="entry_created", status_from=None, status_to="open"),
+            event("02", kind="task_scheduled", status_from="open", status_to="scheduled", note="先等试运行",
+                  field_changes={"note": {"from": None, "to": "先等试运行"}}),
+            event("03", kind="entry_updated", status_from="scheduled", status_to="open",
+                  field_changes={"note": {"from": "先等试运行", "to": None}}),
+            event("04", kind="entry_updated", field_changes={"note": {"from": None, "to": "等对方回复"}}),
+            event("05", kind="entry_updated", field_changes={"context": {"from": "a", "to": "b"}}),
+            event("06", kind="task_done", status_from="open", status_to="done", note="研发排进了 11 月",
+                  field_changes={"note": {"from": "等对方回复", "to": "研发排进了 11 月"}}),
+        ]
+
+        snapshot = build_snapshot(tuple(data), self.reports_root, reference_date=date(2026, 9, 30), events=events)
+
+        by_id = {item["id"]: item for item in snapshot["entries"]}
+        done = by_id["TASK-20260901-001"]
+        self.assertEqual(("完成了什么", "2026-09-06T10:00:00+08:00"), (done["note_label"], done["note_at"]))
+        self.assertEqual(
+            [
+                {"at": "2026-09-04T10:00:00+08:00", "note": "等对方回复", "status_label": None},
+                {"at": "2026-09-02T10:00:00+08:00", "note": "先等试运行", "status_label": "排到以后"},
+            ],
+            done["note_history"],
+        )
+        # 台账里没记下值的旧进展只显示当前一句，不补日期。
+        self.assertEqual(("进展", None, []), tuple(by_id["TASK-20260901-002"][key] for key in ("note_label", "note_at", "note_history")))
+
     def test_snapshot_exposes_only_browser_fields(self):
         data = list(copy.deepcopy(fixture_current_data()))
         private_path = "/Users/example/.local/share/lifeos/private.md"
@@ -166,6 +203,7 @@ class WebServerTest(unittest.TestCase):
             0,
             self.reports_root,
             current_data_reader=fixture_current_data,
+            events_reader=list,
             opener=self.opener,
         )
         self.thread = threading.Thread(target=self.server.serve_forever, daemon=True)

@@ -593,6 +593,50 @@ class EntryWorkflowTest(CLITestCase):
         )
         self.assertEqual("entry_updated", self.events()[-1]["kind"])
 
+    def test_edits_keep_before_and_after_values_in_the_history(self):
+        task_id = self.add("task-add", "--text", "等回复的事", "--context", "为什么做", "--source", "x")
+        self.run_cli("entry-update", task_id, "--note", "等对方回复", "--source", "x")
+        self.run_cli(
+            "entry-update", task_id, "--note", "对方已确认，等研发排期",
+            "--context", "为什么做，做到哪算完", "--source", "x",
+        )
+        self.run_cli("entry-update", task_id, "--star", "--source", "x")
+        self.run_cli("task-done", task_id, "--note", "研发排进了 11 月", "--source", "x")
+        self.assertEqual(
+            [
+                None,
+                {"note": {"from": None, "to": "等对方回复"}},
+                {
+                    "context": {"from": "为什么做", "to": "为什么做，做到哪算完"},
+                    "note": {"from": "等对方回复", "to": "对方已确认，等研发排期"},
+                },
+                {"starred": {"from": False, "to": True}},
+                {"note": {"from": "对方已确认，等研发排期", "to": "研发排进了 11 月"}},
+            ],
+            [event.get("field_changes") for event in self.events() if event.get("entry_id") == task_id],
+        )
+        done = self.events()[-1]
+        self.assertEqual(("open", "done", "研发排进了 11 月"), (done["status_from"], done["status_to"], done["note"]))
+
+        history = self.run_cli("show", task_id).stdout.split("历史：", 1)[1]
+        self.assertLess(history.index("进展：等对方回复"), history.index("进展：对方已确认，等研发排期"))
+        self.assertIn("背景：为什么做，做到哪算完", history)
+        self.assertIn("星标：标星", history)
+        self.assertIn("完成了什么：研发排进了 11 月", history)
+
+    def test_first_edit_of_an_older_entry_keeps_what_it_replaced(self):
+        older_events = (self.data_dir / "events.jsonl").read_bytes()
+        self.run_cli("entry-update", "TASK-20260725-001", "--context", "只留来由", "--source", "x")
+        self.assertTrue((self.data_dir / "events.jsonl").read_bytes().startswith(older_events))
+        self.assertEqual(
+            {"context": {"from": "合成测试用的背景。", "to": "只留来由"}},
+            self.events()[-1]["field_changes"],
+        )
+        shown = self.run_cli("show", "TASK-20260725-001").stdout
+        self.assertIn("创建合成待办", shown)
+        self.assertIn("背景：只留来由", shown)
+        self.validate_runtime()
+
     def test_deadline_changes_keep_their_own_history(self):
         task_id = self.add("task-add", "--text", "有截止的事", "--due", "2026-12-01", "--source", "x")
         postponed = self.run_cli("task-reschedule", task_id, "--due", "2026-12-20", "--source", "x", check=False)

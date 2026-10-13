@@ -618,6 +618,13 @@ h1, h2, h3, p { margin-top: 0; }
 }
 .detail-section h3 { margin-bottom: var(--space-2); color: var(--muted); font: var(--weight-body) var(--text-meta)/var(--line-meta) var(--font-ui); letter-spacing: .1em; text-transform: uppercase; }
 .detail-section p { margin-bottom: var(--space-2); font-weight: var(--weight-control); line-height: var(--line-title); white-space: pre-wrap; }
+/* 进展：标题旁是这一版的日期；更早的版本日期成一列，正文常规字重、Note 字阶、淡一档，读起来是同一件事的前情。 */
+.detail-when { color: var(--faint); letter-spacing: .02em; }
+.detail-when::before { content: "·"; margin: 0 var(--space-2); }
+.note-history { display: grid; gap: var(--space-3); margin: var(--space-4) 0 0; padding: 0; list-style: none; }
+.note-history li { display: grid; grid-template-columns: 36px minmax(0, 1fr); column-gap: var(--space-3); align-items: baseline; }
+.note-history time { color: var(--faint); font: var(--text-meta)/var(--line-note) var(--font-ui); }
+.detail-section .note-history p { margin: 0; color: var(--muted); font: var(--weight-body) var(--text-note)/var(--line-note) var(--font-ui); overflow-wrap: anywhere; }
 .related-link {
   display: block;
   position: relative;

@@ -439,7 +439,7 @@ def render_insights(projects_data, entries_data):
         "# 洞见",
         "",
         f"> 更新：{display_iso_time(entries_data.get('updated_at'))}",
-        "> 只收本人认过有用的判断；反复出现时写成规则，并在批注里写明写进了哪里。",
+        "> 只收本人认过有用的判断；反复出现时写成规则，并写明写进了哪里。",
         "",
     ]
     if not insights:
@@ -457,7 +457,7 @@ def render_insights(projects_data, entries_data):
             lines.append("")
             lines.append(f"- **来由**：{item['context']}")
             if item.get("note"):
-                lines.append(f"- **批注**：{item['note']}")
+                lines.append(f"- **写进了哪里**：{item['note']}")
             lines.append("")
     return "\n".join(lines)
 

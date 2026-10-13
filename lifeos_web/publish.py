@@ -13,7 +13,7 @@ import json
 from pathlib import Path
 from typing import Any
 
-from lifeos_work.runtime import read_current_data
+from lifeos_work.runtime import read_current_data, read_events
 
 from .projection import build_snapshot, report_detail
 from .server import STATIC_FILES, _static_bytes
@@ -27,7 +27,7 @@ def _write_json(path: Path, payload: dict[str, Any]) -> None:
 def write_site(destination: Path, reports_root: Path) -> int:
     """Write the static workspace into ``destination``; return published report count."""
 
-    snapshot = build_snapshot(read_current_data(), reports_root)
+    snapshot = build_snapshot(read_current_data(), reports_root, events=read_events())
     snapshot["published"] = True
     for route, (name, _content_type) in STATIC_FILES.items():
         target = destination / ("index.html" if route == "/" else route.lstrip("/"))

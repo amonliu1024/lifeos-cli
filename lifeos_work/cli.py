@@ -57,7 +57,7 @@ WORK_EPILOG = """查询与写入约定：
   entries、projects、glossary 无过滤参数时返回全部记录；只有显式参数会缩小结果集。
   写入命令会在锁内校验并更新声明的事实源，同时刷新派生视图并追加不可变 events.jsonl；跨事实源写入会先备份完整 Runtime，refresh 只重建视图，validate 只读校验。
   --source 是本次记录的事实来源（可重复；多数写入必填），写进审计事件；--idempotency-key 是重试时使用的稳定键，命中后不重复写入。
-  每一笔只保留当前状态的一句批注（--note）：完成了什么、为什么划掉、疑问的答案、洞见为什么退役；之前的状态和批注都在审计事件里，show 会一并列出。
+  每一笔只保留一句进展（--note）：还在账上时写现在怎样，了结时写完成了什么、为什么划掉或疑问的答案，洞见写写进了哪里；每次改动的前后值都在审计事件里，show 会按时间列出。
   待办的 --due 是结果硬截止，只有 --due 过去才算逾期；7 天内到期算紧急。排到以后（task-schedule）只精确到月。等别人的事记成一条 --owner 是对方的待办。
   随记或疑问要转成别的一笔时，在新一笔的 add 命令上用 --from 指向它，原来那笔会标成转成别的。
   每月初用 brief --mode monthly 做一次月初盘点：久未变化的、排到本月的和所有星标，逐笔给个去向。"""
@@ -84,7 +84,7 @@ COMMAND_DESCRIPTIONS = {
     "note-add": "记一条 – 随记：想到的点子或要记住的事，还没决定做，不进待办。",
     "question-add": "记一条 ? 疑问：要查、要问或要拍板的问题，可以标星。",
     "insight-add": "留下一条 ! 洞见：一句判断，--context 写让你想明白的那件事（来由）。只记本人认过有用的。",
-    "entry-update": "修改还没了结的一笔：正文、背景、批注、项目、星标；待办还可改负责人，排到以后的可用 --reopen 取回。已了结的只能改背景和批注的措辞，了结时间不变。",
+    "entry-update": "修改还没了结的一笔：正文、背景、进展、项目、星标；待办还可改负责人，排到以后的可用 --reopen 取回。已了结的只能改背景和进展的措辞，了结时间不变。",
     "task-done": "把待办标为完成 ✓，--note 写完成了什么。",
     "task-schedule": "把待办排到以后某个月 <；到那个月之前不出现在当前简报。",
     "task-reschedule": "只调整待办的截止时间，并把每次变化追加到截止时间历史。",
@@ -96,7 +96,7 @@ COMMAND_DESCRIPTIONS = {
     "term-add": "创建实体名词；--confirmed-at 省略时使用本地当前日期。",
     "term-update": "更新实体名词或追加别名和来源；改名时同步负责人写着旧名字的待办。",
     "show": "只读输出一条记录的原始 JSON，并列出这一笔的审计历史；可查项目（按 project_key）、某一笔或实体名词。",
-    "history": "只读检索指定周期内完成的待办和完成批注；不指定周期时返回全部。",
+    "history": "只读检索指定周期内完成的待办和完成了什么；不指定周期时返回全部。",
     "review": "只读生成一个月度、季度或半年度复盘：完成的待办和新留下的洞见；必须显式指定一个周期。",
     "changes": "只读读取不可变变更记录；无时间窗默认返回最近 20 条，提供时间窗时默认返回窗口内全部事件。",
     "refresh": "重建当前派生 Markdown 视图；不改变事实 JSON 或 events.jsonl。",
@@ -392,8 +392,8 @@ def register_work_parser(domains):
     context_change.add_argument("--context", type=validate_nonempty_text, help="新的背景；洞见就是来由。")
     context_change.add_argument("--clear-context", action="store_true", help="清空背景（洞见不能清空）。")
     note_change = command.add_mutually_exclusive_group()
-    note_change.add_argument("--note", type=validate_nonempty_text, help="当前状态的一句批注，例如洞见写进了哪条规则。")
-    note_change.add_argument("--clear-note", action="store_true", help="清空批注。")
+    note_change.add_argument("--note", type=validate_nonempty_text, help="一句进展：现在怎样、卡在哪、下一步在谁手上；洞见写写进了哪里。覆盖原来那句，旧的留在审计事件里。")
+    note_change.add_argument("--clear-note", action="store_true", help="清空进展。")
     project_change = command.add_mutually_exclusive_group()
     project_change.add_argument("--project", metavar="KEY", help="改挂到这个项目（project_key）。")
     project_change.add_argument("--clear-project", action="store_true", help="不再挂项目。")

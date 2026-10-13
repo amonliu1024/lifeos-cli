@@ -7,12 +7,13 @@ from pathlib import Path
 from typing import Any
 
 from lifeos_reports import store as report_store
-from lifeos_work.config import ENTRY_SYMBOLS, URGENT_WINDOW_DAYS, status_label
+from lifeos_work.config import ENTRY_SYMBOLS, URGENT_WINDOW_DAYS, note_label, status_label
 from lifeos_work.model import (
     is_kept,
     is_live,
     is_mine,
     logged_on,
+    note_versions,
     owner_name,
     task_is_current,
     task_quadrant,
@@ -30,10 +31,33 @@ def _project_summary(project: dict[str, Any] | None) -> dict[str, Any] | None:
     }
 
 
+def _note_progress(entry: dict[str, Any], events: list[dict[str, Any]]) -> dict[str, Any]:
+    """Date the current 进展 and list the earlier ones the audit log recorded, newest first."""
+
+    kind = entry.get("kind")
+    versions = note_versions(entry, events)
+    note_at = None
+    if versions and entry.get("note") and versions[-1]["note"] == entry.get("note"):
+        note_at = versions.pop()["at"]
+    return {
+        "note_label": note_label(kind, entry.get("status")),
+        "note_at": note_at,
+        "note_history": [
+            {
+                "at": version["at"],
+                "note": version["note"],
+                "status_label": status_label(kind, version["status"]) if version["status_changed"] else None,
+            }
+            for version in reversed(versions)
+        ],
+    }
+
+
 def _entry_projection(
     entry: dict[str, Any],
     projects: dict[str, dict[str, Any]],
     reference_date: date,
+    events: list[dict[str, Any]],
 ) -> dict[str, Any]:
     kind = entry.get("kind")
     current = task_is_current(entry, reference_date)
@@ -46,6 +70,7 @@ def _entry_projection(
         "status": entry.get("status"),
         "status_label": status_label(kind, entry.get("status")),
         "note": entry.get("note"),
+        **_note_progress(entry, events),
         "ref": entry.get("ref"),
         "starred": bool(entry.get("starred")),
         "owner": owner_name(entry) if kind == "task" else None,
@@ -107,11 +132,19 @@ def build_snapshot(
     current_data: tuple[dict[str, Any], ...],
     reports_root: Path,
     reference_date: date | None = None,
+    events: list[dict[str, Any]] | None = None,
 ) -> dict[str, Any]:
-    """Build the single browser projection without retaining or writing state."""
+    """Build the single browser projection without retaining or writing state.
+
+    ``events`` is the audit log; only each entry's own 进展 versions leave it.
+    """
 
     projects_data, entries_data, _glossary_data = current_data
     reference_date = reference_date or date.today()
+    events_by_entry: dict[str, list[dict[str, Any]]] = {}
+    for event in events or []:
+        if event.get("entry_id"):
+            events_by_entry.setdefault(event["entry_id"], []).append(event)
     projects = {
         item.get("project_key"): item for item in projects_data.get("projects", [])
     }
@@ -126,7 +159,7 @@ def build_snapshot(
     rank = {entry["id"]: index for index, entry in enumerate(ranked)}
     entries = []
     for entry in raw_entries:
-        projected = _entry_projection(entry, projects, reference_date)
+        projected = _entry_projection(entry, projects, reference_date, events_by_entry.get(entry.get("id"), []))
         projected["rank"] = rank.get(entry.get("id"))
         entries.append(projected)
     entries.sort(

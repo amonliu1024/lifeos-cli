@@ -1,8 +1,9 @@
 """Entry query and mutation handlers: • 待办、– 随记、? 疑问、! 洞见.
 
-Every mutation goes through one ``transaction`` on ``entries.json``.  Status
-changes are recorded in the audit event with the previous status and the note
-given at that moment, because the entry itself only keeps the latest note.
+Every mutation goes through one ``transaction`` on ``entries.json``.  The entry
+itself only keeps the latest wording, so the audit event records the status
+change with the note given at that moment, and the before/after values of every
+tracked field the write changed.
 """
 
 import json
@@ -30,6 +31,8 @@ from ..model import (
     now,
     project_label,
     schedule_change,
+    tracked_changes,
+    tracked_values,
 )
 from ..runtime import read_current_data, read_events, transaction
 from ..views import render_entries
@@ -167,6 +170,7 @@ def update_entry(args, kinds, summary, event_kind, change):
         data = tx.data("entries")
         entry = find_entry(data["entries"], args.id, kinds)
         before = entry.get("status")
+        previous = tracked_values(entry)
         kept = is_kept(entry)
         detail = change(tx, entry, data["entries"])
         timestamp = iso_now()
@@ -185,6 +189,7 @@ def update_entry(args, kinds, summary, event_kind, change):
             related_entry_id=entry.get("ref") if changed else None,
             sources=args.source,
             status_change=(before, after, entry.get("note")) if changed else None,
+            field_changes=tracked_changes(previous, entry),
         )
         tx.commit("entries", event)
 
@@ -205,7 +210,7 @@ def require_editable(entry, args):
     )
     if not wording_only:
         label = status_label(entry.get("kind"), entry.get("status"))
-        fail(f"{entry['id']} 已经{label}，除了背景和批注不能再修改")
+        fail(f"{entry['id']} 已经{label}，除了背景和进展不能再修改")
 
 
 def command_entry_update(args):

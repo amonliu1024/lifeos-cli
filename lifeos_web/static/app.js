@@ -395,6 +395,23 @@ function relatedLink(id) {
   return `<button class="related-link" data-related-id="${esc(id)}">${esc(target ? target.text : id)}</button>`;
 }
 
+function multiline(value) {
+  return text(value).replaceAll("\n", "<br>");
+}
+
+// 进展：当前一句在上，标题旁写这一版的日期；台账里记下的更早版本按时间从近到远列在下面，低一档。
+function progressSection(item) {
+  const history = item.note_history || [];
+  if (!item.note && !history.length) return "";
+  const when = item.note_at ? `<time class="detail-when" datetime="${esc(item.note_at)}">${monthDay(item.note_at)}</time>` : "";
+  const current = item.note ? `<p>${multiline(item.note)}</p>` : "";
+  const earlier = history.length ? `<ol class="note-history" aria-label="更早的${esc(item.note_label)}">${history.map((version) => `<li>
+      <time datetime="${esc(version.at)}">${monthDay(version.at)}</time>
+      <p>${version.status_label ? `${esc(version.status_label)}：` : ""}${multiline(version.note)}</p>
+    </li>`).join("")}</ol>` : "";
+  return `<section class="detail-section is-progress"><h3>${esc(item.note_label)}${when}</h3>${current}${earlier}</section>`;
+}
+
 function openDetail(id) {
   const item = findRecord(id);
   if (!item) return;
@@ -404,15 +421,9 @@ function openDetail(id) {
   const due = item.kind === "task" && item.due ? (item.live ? dueMark(item.due) : `<span class="due-mark" title="截止 ${esc(item.due)}">截止 ${monthDay(item.due)}</span>`) : "";
   const header = `<p class="detail-kind${item.status === "dropped" ? " is-dropped" : ""}">${kind}</p><h2>${text(item.text)}${starMark(item)}</h2>
     ${project || due ? `<div class="detail-meta">${project}${project && due ? '<span class="aside-divider"></span>' : ""}${due}</div>` : ""}`;
-  const noteTitle = {
-    done: item.kind === "question" ? "答案" : "完成了什么",
-    dropped: item.kind === "insight" ? "为什么退役" : "为什么划掉",
-    scheduled: "为什么以后再做",
-  }[item.status] || "批注";
   const refTitle = { converted: "转成了", done: "答案来自", dropped: "被它取代" }[item.status] || "指向";
-  const multiline = (value) => text(value).replaceAll("\n", "<br>");
   const body = `
-    ${detailSection(noteTitle, item.note ? `<p>${multiline(item.note)}</p>` : "")}
+    ${progressSection(item)}
     ${detailSection(refTitle, item.ref ? relatedLink(item.ref) : "")}
     ${detailSection("负责人", item.owner ? `<p>${text(item.owner)}</p>` : "")}
     ${detailSection("排到", item.month ? `<p>${text(item.month)}</p>` : "")}

@@ -19,6 +19,7 @@ from .config import (
     REVIEWED_KINDS,
     STALE_DAYS,
     TIMEZONE,
+    TRACKED_ENTRY_FIELDS,
     URGENT_WINDOW_DAYS,
 )
 from .errors import fail
@@ -208,6 +209,7 @@ def make_event(
     project=None,
     sources=None,
     status_change=None,
+    field_changes=None,
 ):
     event = {
         "event_id": generate_id("EVT", [item.get("event_id", "") for item in events]),
@@ -224,12 +226,15 @@ def make_event(
     if project:
         event["project"] = project
     if status_change:
-        # 当前记录只留最新一句批注；状态怎么变过来的、当时说了什么留在这里。
+        # 当前记录只留最新一句进展；状态怎么变过来的、当时说了什么留在这里。
         before, after, note = status_change
         event["status_from"] = before
         event["status_to"] = after
         if note:
             event["note"] = note
+    if field_changes:
+        # 进展、背景这些字段只存当前值，改前改后都记在这里，show 和 Web 由它还原每一版。
+        event["field_changes"] = field_changes
     if getattr(args, "idempotency_key", None):
         event["idempotency_key"] = args.idempotency_key
     return event
@@ -247,6 +252,66 @@ def event_entry_ids(event):
         )
         if value
     }
+
+
+def tracked_values(entry):
+    return {field: entry.get(field) for field in TRACKED_ENTRY_FIELDS}
+
+
+def tracked_changes(previous, entry):
+    """Before/after values of the tracked fields that a write actually changed."""
+
+    return {
+        field: {"from": value, "to": entry.get(field)}
+        for field, value in previous.items()
+        if entry.get(field) != value
+    }
+
+
+def entry_timeline(entry, events):
+    """The entry's own events, oldest first, each paired with its status right after.
+
+    Events written before the entry's first status change (migrated records)
+    take the status that change started from; without any, the current one.
+    """
+
+    own = [event for event in events if event.get("entry_id") == entry.get("id")]
+    first_change = next((event for event in own if event.get("status_to")), None)
+    status = (first_change or {}).get("status_from") or entry.get("status")
+    timeline = []
+    for event in own:
+        status = event.get("status_to") or status
+        timeline.append((event, status))
+    return timeline
+
+
+def note_versions(entry, events):
+    """Every recorded value of the entry's note (进展), oldest first.
+
+    A status change keeps the note given with it; any other edit keeps its value
+    in ``field_changes``.  Edits from before values were recorded are unknown.
+    """
+
+    versions = []
+    for event, status in entry_timeline(entry, events):
+        changes = event.get("field_changes") or {}
+        if "note" in changes:
+            value = changes["note"]["to"]
+        elif event.get("status_to") and event.get("note"):
+            value = event["note"]
+        else:
+            continue
+        if not value:
+            continue
+        versions.append(
+            {
+                "at": event.get("occurred_at"),
+                "note": value,
+                "status": status,
+                "status_changed": bool(event.get("status_to")) and event.get("status_from") is not None,
+            }
+        )
+    return versions
 
 
 def schedule_change(field, previous, current):
@@ -461,6 +526,7 @@ __all__ = [
     "display_iso_time",
     "entry_matches_query",
     "entry_symbol",
+    "entry_timeline",
     "event_entry_ids",
     "find_entry",
     "find_item",
@@ -481,6 +547,7 @@ __all__ = [
     "matches_created_period",
     "matches_period",
     "month_label",
+    "note_versions",
     "now",
     "parse_moment",
     "parsed_date",
@@ -495,6 +562,8 @@ __all__ = [
     "task_quadrant",
     "task_sort_key",
     "timestamp_date",
+    "tracked_changes",
+    "tracked_values",
     "validate_date",
     "validate_half",
     "validate_moment",
