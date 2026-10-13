@@ -399,19 +399,37 @@ function multiline(value) {
   return text(value).replaceAll("\n", "<br>");
 }
 
-// 进展：当前一句在上，标题旁写这一版的日期；台账里的更早版本按时间从近到远列在下面，低一档。
-// 事后补记的版本按它成立的日期排进去，列表末尾用一行说明有几版是补记的。
+// 进展：所有版本排成一条时间线，日期成一列，最新一版在第一行、墨色加重，更早的低一档。
+// 超过四版时只露最近三版，其余收在「更早 N 版」后面；每次打开抽屉都从收起开始。
+const PROGRESS_VISIBLE = 3;
+
 function progressSection(item) {
-  const history = item.note_history || [];
-  if (!item.note && !history.length) return "";
-  const when = item.note_at ? `<time class="detail-when" datetime="${esc(item.note_at)}">${monthDay(item.note_at)}</time>` : "";
-  const current = item.note ? `<p>${multiline(item.note)}</p>` : "";
-  const backfilled = history.filter((version) => version.backfilled).length;
-  const earlier = history.length ? `<ol class="note-history" aria-label="更早的${esc(item.note_label)}">${history.map((version) => `<li>
-      <time datetime="${esc(version.at)}"${version.backfilled ? ' title="事后补记"' : ""}>${monthDay(version.at)}</time>
+  const versions = [
+    ...(item.note ? [{ at: item.note_at, note: item.note, current: true }] : []),
+    ...(item.note_history || []),
+  ];
+  if (!versions.length) return "";
+  const title = `<h3>${esc(item.note_label)}</h3>`;
+  // 台账里没有任何日期的旧进展，照其他区块的写法只放一句。
+  if (versions.every((version) => !version.at)) {
+    return `<section class="detail-section is-progress">${title}<p>${multiline(versions[0].note)}</p></section>`;
+  }
+  const folded = versions.length > PROGRESS_VISIBLE + 1;
+  const rows = versions.map((version, index) => {
+    const classes = [version.current ? "is-current" : "", folded && index >= PROGRESS_VISIBLE ? "is-earlier" : ""].filter(Boolean);
+    return `<li${classes.length ? ` class="${classes.join(" ")}"` : ""}>
+      <time${version.at ? ` datetime="${esc(version.at)}"` : ""}>${version.at ? monthDay(version.at) : ""}</time>
       <p>${version.status_label ? `${esc(version.status_label)}：` : ""}${multiline(version.note)}</p>
-    </li>`).join("")}</ol>${backfilled ? `<p class="note-history-caption">其中 ${backfilled} 版是事后补记的</p>` : ""}` : "";
-  return `<section class="detail-section is-progress"><h3>${esc(item.note_label)}${when}</h3>${current}${earlier}</section>`;
+    </li>`;
+  }).join("");
+  const toggle = folded
+    ? `<button class="progress-toggle" data-progress-toggle aria-expanded="false"><span>${earlierLabel(versions.length - PROGRESS_VISIBLE)}</span>${svg(ICONS.chevron)}</button>`
+    : "";
+  return `<section class="detail-section is-progress">${title}<ol class="progress-timeline">${rows}</ol>${toggle}</section>`;
+}
+
+function earlierLabel(count) {
+  return `更早 ${count} 版`;
 }
 
 function openDetail(id) {
@@ -526,6 +544,14 @@ document.addEventListener("click", (event) => {
     if (state.expanded.has(key)) state.expanded.delete(key);
     else state.expanded.add(key);
     render(); return;
+  }
+  const progressToggle = event.target.closest("[data-progress-toggle]");
+  if (progressToggle) {
+    const section = progressToggle.closest(".is-progress");
+    const expanded = section.classList.toggle("is-expanded");
+    progressToggle.setAttribute("aria-expanded", String(expanded));
+    progressToggle.querySelector("span").textContent = expanded ? "收起" : earlierLabel(section.querySelectorAll(".is-earlier").length);
+    return;
   }
   const open = event.target.closest("[data-open-id]");
   if (open) { openDetail(open.dataset.openId); return; }

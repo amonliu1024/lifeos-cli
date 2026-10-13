@@ -119,9 +119,9 @@ class WebProjectionTest(unittest.TestCase):
         self.assertEqual(("完成了什么", "2026-09-06T10:00:00+08:00"), (done["note_label"], done["note_at"]))
         self.assertEqual(
             [
-                {"at": "2026-09-04T10:00:00+08:00", "note": "等对方回复", "status_label": None, "backfilled": False},
-                {"at": "2026-09-03", "note": "材料已交对方", "status_label": None, "backfilled": True},
-                {"at": "2026-09-02T10:00:00+08:00", "note": "先等试运行", "status_label": "排到以后", "backfilled": False},
+                {"at": "2026-09-04T10:00:00+08:00", "note": "等对方回复", "status_label": None},
+                {"at": "2026-09-03", "note": "材料已交对方", "status_label": None},
+                {"at": "2026-09-02T10:00:00+08:00", "note": "先等试运行", "status_label": "排到以后"},
             ],
             done["note_history"],
         )

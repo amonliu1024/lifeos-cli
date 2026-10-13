@@ -47,7 +47,6 @@ def _note_progress(entry: dict[str, Any], events: list[dict[str, Any]]) -> dict[
                 "at": version["at"],
                 "note": version["note"],
                 "status_label": status_label(kind, version["status"]) if version["status_changed"] else None,
-                "backfilled": version["backfilled"],
             }
             for version in reversed(versions)
         ],

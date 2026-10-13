@@ -618,14 +618,29 @@ h1, h2, h3, p { margin-top: 0; }
 }
 .detail-section h3 { margin-bottom: var(--space-2); color: var(--muted); font: var(--weight-body) var(--text-meta)/var(--line-meta) var(--font-ui); letter-spacing: .1em; text-transform: uppercase; }
 .detail-section p { margin-bottom: var(--space-2); font-weight: var(--weight-control); line-height: var(--line-title); white-space: pre-wrap; }
-/* 进展：标题旁是这一版的日期；更早的版本日期成一列，正文常规字重、Note 字阶、淡一档，读起来是同一件事的前情。 */
-.detail-when { color: var(--faint); letter-spacing: .02em; }
-.detail-when::before { content: "·"; margin: 0 var(--space-2); }
-.note-history { display: grid; gap: var(--space-3); margin: var(--space-4) 0 0; padding: 0; list-style: none; }
-.note-history li { display: grid; grid-template-columns: 36px minmax(0, 1fr); column-gap: var(--space-3); align-items: baseline; }
-.note-history time { color: var(--faint); font: var(--text-meta)/var(--line-note) var(--font-ui); }
-.detail-section .note-history p { margin: 0; color: var(--muted); font: var(--weight-body) var(--text-note)/var(--line-note) var(--font-ui); overflow-wrap: anywhere; }
-.detail-section .note-history-caption { margin: var(--space-3) 0 0; color: var(--faint); font: var(--weight-body) var(--text-meta)/var(--line-meta) var(--font-ui); }
+/* 进展：一条时间线，日期成一列，所有版本同一字号；最新一版墨色加重，更早的中灰常规。超过四版时更早的收起。 */
+.progress-timeline { display: grid; gap: var(--space-2); margin: 0; padding: 0; list-style: none; }
+.progress-timeline li { display: grid; grid-template-columns: 36px minmax(0, 1fr); column-gap: var(--space-3); align-items: baseline; }
+.progress-timeline time { color: var(--faint); font: var(--text-meta)/var(--line-title) var(--font-ui); }
+.detail-section .progress-timeline p { margin: 0; color: var(--muted); font-weight: var(--weight-body); overflow-wrap: anywhere; }
+.detail-section .progress-timeline .is-current p { color: var(--ink); font-weight: var(--weight-control); }
+.is-progress:not(.is-expanded) .is-earlier { display: none; }
+.progress-toggle {
+  display: inline-flex;
+  align-items: center;
+  gap: var(--space-1);
+  margin: var(--space-3) 0 0 calc(36px + var(--space-3));
+  padding: 0;
+  color: var(--muted);
+  border: 0;
+  background: transparent;
+  font: var(--text-meta)/var(--line-meta) var(--font-ui);
+  cursor: pointer;
+}
+.progress-toggle svg { width: var(--icon-inline); height: var(--icon-inline); fill: none; stroke: currentColor; stroke-width: 1.5; stroke-linecap: round; stroke-linejoin: round; transition: transform 160ms ease; }
+.is-progress.is-expanded .progress-toggle svg { transform: rotate(180deg); }
+.progress-toggle:hover { color: var(--ink); }
+.progress-toggle:focus-visible { outline: 2px solid var(--blue); outline-offset: 2px; border-radius: 4px; }
 .related-link {
   display: block;
   position: relative;
