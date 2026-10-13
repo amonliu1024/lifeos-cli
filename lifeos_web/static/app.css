@@ -618,18 +618,32 @@ h1, h2, h3, p { margin-top: 0; }
 }
 .detail-section h3 { margin-bottom: var(--space-2); color: var(--muted); font: var(--weight-body) var(--text-meta)/var(--line-meta) var(--font-ui); letter-spacing: .1em; text-transform: uppercase; }
 .detail-section p { margin-bottom: var(--space-2); font-weight: var(--weight-control); line-height: var(--line-title); white-space: pre-wrap; }
-/* 进展：一条时间线，日期成一列，所有版本同一字号；最新一版墨色加重，更早的中灰常规。超过四版时更早的收起。 */
-.progress-timeline { display: grid; gap: var(--space-2); margin: 0; padding: 0; list-style: none; }
-.progress-timeline li { display: grid; grid-template-columns: 36px minmax(0, 1fr); column-gap: var(--space-3); align-items: baseline; }
-.progress-timeline time { color: var(--faint); font: var(--text-meta)/var(--line-title) var(--font-ui); }
-.detail-section .progress-timeline p { margin: 0; color: var(--muted); font-weight: var(--weight-body); overflow-wrap: anywhere; }
-.detail-section .progress-timeline .is-current p { color: var(--ink); font-weight: var(--weight-control); }
+/* 进展：一条时间线。左列日期右对齐，中列一根细竖轴串起圆点，右列是那一句，所有版本同一字号；
+   最新一版是带白边光圈的实心墨点、墨色加重，更早的是空心点、中灰常规。竖轴从第一个点画到最后一个露出来的点；
+   超过四版时更早的收起，最后露出的那版往下接一段虚线，连到「更早 N 版」。 */
+.is-progress { --rail-x: calc(40px + var(--space-3) + 7.5px); }
+.progress-timeline { margin: 0; padding: 0; list-style: none; }
+.progress-timeline li { position: relative; display: grid; grid-template-columns: 40px 16px minmax(0, 1fr); column-gap: var(--space-3); }
+.progress-timeline li::before { content: ""; position: absolute; top: 0; bottom: 0; left: var(--rail-x); width: 1px; background: var(--edge); }
+.progress-timeline li:first-child::before { top: calc(var(--line-title) / 2); }
+.progress-timeline li:last-child::before { bottom: auto; height: calc(var(--line-title) / 2); }
+.progress-timeline li:only-child::before { display: none; }
+.is-progress:not(.is-expanded) .progress-timeline li:has(+ .is-earlier)::before { bottom: auto; height: calc(var(--line-title) / 2); }
+.is-progress:not(.is-expanded) .progress-timeline li:has(+ .is-earlier)::after { content: ""; position: absolute; top: calc(var(--line-title) / 2); bottom: 0; left: var(--rail-x); border-left: 1px dashed var(--faint); opacity: .5; }
 .is-progress:not(.is-expanded) .is-earlier { display: none; }
+.progress-timeline time { color: var(--faint); font: var(--text-meta)/var(--line-title) var(--font-ui); text-align: right; }
+.progress-timeline .is-current time { color: var(--ink); font-weight: var(--weight-control); }
+.progress-dot { position: relative; z-index: 1; justify-self: center; box-sizing: border-box; width: 10px; height: 10px; margin-top: calc(var(--line-title) / 2 - 5px); border: 1.5px solid var(--faint); border-radius: 50%; background: var(--surface); }
+.progress-timeline .is-current .progress-dot { border: 0; background: var(--ink); box-shadow: 0 0 0 3px var(--surface), 0 0 0 4.5px var(--edge); }
+.detail-section .progress-timeline p { margin: 0 0 var(--space-4); color: var(--muted); font-weight: var(--weight-body); overflow-wrap: anywhere; }
+.detail-section .progress-timeline .is-current p { color: var(--ink); font-weight: var(--weight-control); }
+.progress-more { position: relative; padding-left: calc(40px + 16px + 2 * var(--space-3)); }
+.is-progress:not(.is-expanded) .progress-more::before { content: ""; position: absolute; top: 0; left: var(--rail-x); height: calc(var(--line-meta) / 2); border-left: 1px dashed var(--faint); opacity: .5; }
 .progress-toggle {
   display: inline-flex;
   align-items: center;
   gap: var(--space-1);
-  margin: var(--space-3) 0 0 calc(36px + var(--space-3));
+  margin: 0;
   padding: 0;
   color: var(--muted);
   border: 0;

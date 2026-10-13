@@ -399,7 +399,7 @@ function multiline(value) {
   return text(value).replaceAll("\n", "<br>");
 }
 
-// 进展：所有版本排成一条时间线，日期成一列，最新一版在第一行、墨色加重，更早的低一档。
+// 进展：所有版本排成一条时间线，左边日期、中间竖轴串起圆点、右边那一句；最新一版在第一行，实心墨点、墨色加重，更早的空心点、低一档。
 // 超过四版时只露最近三版，其余收在「更早 N 版」后面；每次打开抽屉都从收起开始。
 const PROGRESS_VISIBLE = 3;
 
@@ -419,11 +419,12 @@ function progressSection(item) {
     const classes = [version.current ? "is-current" : "", folded && index >= PROGRESS_VISIBLE ? "is-earlier" : ""].filter(Boolean);
     return `<li${classes.length ? ` class="${classes.join(" ")}"` : ""}>
       <time${version.at ? ` datetime="${esc(version.at)}"` : ""}>${version.at ? monthDay(version.at) : ""}</time>
+      <span class="progress-dot" aria-hidden="true"></span>
       <p>${version.status_label ? `${esc(version.status_label)}：` : ""}${multiline(version.note)}</p>
     </li>`;
   }).join("");
   const toggle = folded
-    ? `<button class="progress-toggle" data-progress-toggle aria-expanded="false"><span>${earlierLabel(versions.length - PROGRESS_VISIBLE)}</span>${svg(ICONS.chevron)}</button>`
+    ? `<div class="progress-more"><button class="progress-toggle" data-progress-toggle aria-expanded="false"><span>${earlierLabel(versions.length - PROGRESS_VISIBLE)}</span>${svg(ICONS.chevron)}</button></div>`
     : "";
   return `<section class="detail-section is-progress">${title}<ol class="progress-timeline">${rows}</ol>${toggle}</section>`;
 }
