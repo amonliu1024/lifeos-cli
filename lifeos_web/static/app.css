@@ -625,6 +625,7 @@ h1, h2, h3, p { margin-top: 0; }
 .note-history li { display: grid; grid-template-columns: 36px minmax(0, 1fr); column-gap: var(--space-3); align-items: baseline; }
 .note-history time { color: var(--faint); font: var(--text-meta)/var(--line-note) var(--font-ui); }
 .detail-section .note-history p { margin: 0; color: var(--muted); font: var(--weight-body) var(--text-note)/var(--line-note) var(--font-ui); overflow-wrap: anywhere; }
+.detail-section .note-history-caption { margin: var(--space-3) 0 0; color: var(--faint); font: var(--weight-body) var(--text-meta)/var(--line-meta) var(--font-ui); }
 .related-link {
   display: block;
   position: relative;

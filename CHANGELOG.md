@@ -10,6 +10,10 @@
 - 移除 `lifeos reports migrate-activity-ids`：含旧长 Activity ID 的日报不再能用当前版本转换成短 ID。
 - 推送到服务器改为 `lifeos push`，预览改为 `lifeos push -n`；设置镜像目标改为 `lifeos config mirror --target host:path`。`lifeos mirror` 整组命令移除，已配置的镜像目标照常生效，不用重新设置。
 
+### 新增
+
+- `lifeos work entry-backfill ID --as-of YYYY-MM-DD --note "…"` 补记一版更早的进展：只追加一条带成立日期的审计事件，这一笔当前的进展、背景和更新时间都不变；Web 详情按成立日期把补记排进进展历史，并注明有几版是事后补记的。
+
 ### 变更
 
 - 每一笔的「批注」改称「进展」：还在账上时写这一笔现在怎样，了结时照旧写完成了什么、为什么划掉或答案；字段名 `note` 与参数 `--note` 不变。

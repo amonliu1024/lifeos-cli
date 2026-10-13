@@ -108,6 +108,8 @@ class WebProjectionTest(unittest.TestCase):
             event("05", kind="entry_updated", field_changes={"context": {"from": "a", "to": "b"}}),
             event("06", kind="task_done", status_from="open", status_to="done", note="研发排进了 11 月",
                   field_changes={"note": {"from": "等对方回复", "to": "研发排进了 11 月"}}),
+            # 事后补记的一版按它成立的日期排进去，不按写入时间。
+            event("20", kind="progress_backfilled", as_of="2026-09-03", note="材料已交对方"),
         ]
 
         snapshot = build_snapshot(tuple(data), self.reports_root, reference_date=date(2026, 9, 30), events=events)
@@ -117,8 +119,9 @@ class WebProjectionTest(unittest.TestCase):
         self.assertEqual(("完成了什么", "2026-09-06T10:00:00+08:00"), (done["note_label"], done["note_at"]))
         self.assertEqual(
             [
-                {"at": "2026-09-04T10:00:00+08:00", "note": "等对方回复", "status_label": None},
-                {"at": "2026-09-02T10:00:00+08:00", "note": "先等试运行", "status_label": "排到以后"},
+                {"at": "2026-09-04T10:00:00+08:00", "note": "等对方回复", "status_label": None, "backfilled": False},
+                {"at": "2026-09-03", "note": "材料已交对方", "status_label": None, "backfilled": True},
+                {"at": "2026-09-02T10:00:00+08:00", "note": "先等试运行", "status_label": "排到以后", "backfilled": False},
             ],
             done["note_history"],
         )

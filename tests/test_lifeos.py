@@ -637,6 +637,30 @@ class EntryWorkflowTest(CLITestCase):
         self.assertIn("背景：只留来由", shown)
         self.validate_runtime()
 
+    def test_backfill_adds_earlier_progress_without_touching_the_entry(self):
+        entry_id = "TASK-20260725-001"
+        self.run_cli("entry-update", entry_id, "--note", "现在卡在评审", "--source", "x")
+        entries_before = (self.data_dir / "entries.json").read_bytes()
+        self.run_cli(
+            "entry-backfill", entry_id, "--as-of", "2026-08-01", "--note", "等对方给材料", "--source", "8/1 日报"
+        )
+        self.assertEqual(entries_before, (self.data_dir / "entries.json").read_bytes())
+        event = self.events()[-1]
+        self.assertEqual(
+            ("progress_backfilled", "2026-08-01", "等对方给材料", ["8/1 日报"]),
+            (event["kind"], event["as_of"], event["note"], event["sources"]),
+        )
+        before = self.snapshot_state()
+        for as_of in ("2026-07-24", datetime.now(TIMEZONE).date().isoformat()):
+            with self.subTest(as_of=as_of):
+                refused = self.run_cli(
+                    "entry-backfill", entry_id, "--as-of", as_of, "--note", "x", "--source", "x", check=False
+                )
+                self.assertNotEqual(0, refused.returncode)
+        self.assertEqual(before, self.snapshot_state())
+        self.assertIn(f"补记 {entry_id} 在 2026-08-01 的进展：等对方给材料", self.run_cli("show", entry_id).stdout)
+        self.validate_runtime()
+
     def test_deadline_changes_keep_their_own_history(self):
         task_id = self.add("task-add", "--text", "有截止的事", "--due", "2026-12-01", "--source", "x")
         postponed = self.run_cli("task-reschedule", task_id, "--due", "2026-12-20", "--source", "x", check=False)

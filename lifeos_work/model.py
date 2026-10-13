@@ -286,14 +286,22 @@ def entry_timeline(entry, events):
 
 
 def note_versions(entry, events):
-    """Every recorded value of the entry's note (进展), oldest first.
+    """Every known value of the entry's note (进展), ordered by when it held.
 
     A status change keeps the note given with it; any other edit keeps its value
-    in ``field_changes``.  Edits from before values were recorded are unknown.
+    in ``field_changes``.  Earlier progress added afterwards (``entry-backfill``)
+    carries the day it held as ``as_of`` and sorts by that day, ahead of what was
+    written the same day; everything else sorts by when it was written.
     """
 
     versions = []
     for event, status in entry_timeline(entry, events):
+        if event.get("as_of"):
+            versions.append(
+                {"at": event["as_of"], "note": event.get("note"), "status": None,
+                 "status_changed": False, "backfilled": True}
+            )
+            continue
         changes = event.get("field_changes") or {}
         if "note" in changes:
             value = changes["note"]["to"]
@@ -309,8 +317,10 @@ def note_versions(entry, events):
                 "note": value,
                 "status": status,
                 "status_changed": bool(event.get("status_to")) and event.get("status_from") is not None,
+                "backfilled": False,
             }
         )
+    versions.sort(key=lambda version: (str(version["at"])[:10], not version["backfilled"]))
     return versions
 
 

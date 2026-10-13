@@ -25,6 +25,7 @@ from .model import (
 from .runtime import command_init, command_refresh, command_validate
 from .commands.entries import (
     command_entries,
+    command_entry_backfill,
     command_entry_drop,
     command_entry_keep,
     command_entry_update,
@@ -92,6 +93,7 @@ COMMAND_DESCRIPTIONS = {
     "question-answer": "疑问想通了：--note 写答案；答案是一条洞见时用 --by 指向它。",
     "entry-drop": "划掉一笔，--note 写原因；洞见被新洞见取代时用 --by 指向新的那条。",
     "entry-keep": "月初盘点里选择「继续」：记一次复核，30 天重新计时，本月不再出现在盘点清单。",
+    "entry-backfill": "补记一版更早的进展：--as-of 写这句进展实际成立的日期（取自日报等证据），只追加审计事件，这一笔当前的进展、背景和更新时间都不变；日期须不早于记下那天、早于当前进展的日期。",
     "glossary": "只读实体名词查询；无过滤参数时返回全部人员、组织、项目、系统和概念。",
     "term-add": "创建实体名词；--confirmed-at 省略时使用本地当前日期。",
     "term-update": "更新实体名词或追加别名和来源；改名时同步负责人写着旧名字的待办。",
@@ -124,6 +126,7 @@ COMMAND_SUMMARIES = {
     "question-answer": "疑问想通了（写入）",
     "entry-drop": "划掉一笔（写入）",
     "entry-keep": "月初盘点里选择继续（写入）",
+    "entry-backfill": "补记一版更早的进展（写入）",
     "glossary": "查询实体名词（无过滤时全量）",
     "term-add": "创建实体名词（写入）",
     "term-update": "更新实体名词（写入）",
@@ -464,6 +467,14 @@ def register_work_parser(domains):
     add_source_argument(command)
     add_actor_arguments(command)
     command.set_defaults(handler=command_entry_keep)
+
+    command = commands.add_parser("entry-backfill", help="补记一版更早的进展")
+    command.add_argument("id", help="要补记进展的那一笔的 ID。")
+    command.add_argument("--as-of", required=True, type=validate_date, metavar="YYYY-MM-DD", help="这句进展实际成立的日期。")
+    command.add_argument("--note", required=True, type=validate_nonempty_text, help="当时的一句进展。")
+    add_source_argument(command, required=True)
+    add_actor_arguments(command)
+    command.set_defaults(handler=command_entry_backfill)
 
     command = commands.add_parser("glossary", help="查询人员、组织、项目、系统与专有概念")
     command.add_argument("query", nargs="?", help="可选查询文本；省略时不按文本过滤。")

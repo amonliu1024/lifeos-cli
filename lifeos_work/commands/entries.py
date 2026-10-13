@@ -28,6 +28,7 @@ from ..model import (
     last_activity_date,
     logged_on,
     make_event,
+    note_versions,
     now,
     project_label,
     schedule_change,
@@ -415,6 +416,34 @@ def command_entry_drop(args):
         return args.note
 
     update_entry(args, None, "划掉", "entry_dropped", change)
+
+
+def command_entry_backfill(args):
+    """补记一版更早的进展：只追加一条带成立日期的审计事件，这一笔本身不变。"""
+    with transaction(args) as tx:
+        if tx.idempotent_result():
+            return
+        entry = find_entry(tx.data("entries")["entries"], args.id)
+        if args.as_of < logged_on(entry):
+            fail(f"{args.id} 记于 {logged_on(entry)}，补记不能早于这一天")
+        versions = note_versions(entry, tx.events)
+        if entry.get("note") and versions and versions[-1]["note"] == entry["note"]:
+            current_day = str(versions[-1]["at"])[:10]
+            if args.as_of >= current_day:
+                fail(f"{args.id} 当前进展记于 {current_day}，补记只能早于这一天")
+        elif args.as_of > now().date().isoformat():
+            fail("补记日期不能晚于今天")
+        event = make_event(
+            tx.events,
+            args,
+            "progress_backfilled",
+            f"补记 {args.id} 在 {args.as_of} 的进展：{args.note}",
+            entry_id=args.id,
+            sources=args.source,
+        )
+        event["as_of"] = args.as_of
+        event["note"] = args.note
+        tx.commit((), event)
 
 
 def command_entry_keep(args):

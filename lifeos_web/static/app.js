@@ -399,16 +399,18 @@ function multiline(value) {
   return text(value).replaceAll("\n", "<br>");
 }
 
-// 进展：当前一句在上，标题旁写这一版的日期；台账里记下的更早版本按时间从近到远列在下面，低一档。
+// 进展：当前一句在上，标题旁写这一版的日期；台账里的更早版本按时间从近到远列在下面，低一档。
+// 事后补记的版本按它成立的日期排进去，列表末尾用一行说明有几版是补记的。
 function progressSection(item) {
   const history = item.note_history || [];
   if (!item.note && !history.length) return "";
   const when = item.note_at ? `<time class="detail-when" datetime="${esc(item.note_at)}">${monthDay(item.note_at)}</time>` : "";
   const current = item.note ? `<p>${multiline(item.note)}</p>` : "";
+  const backfilled = history.filter((version) => version.backfilled).length;
   const earlier = history.length ? `<ol class="note-history" aria-label="更早的${esc(item.note_label)}">${history.map((version) => `<li>
-      <time datetime="${esc(version.at)}">${monthDay(version.at)}</time>
+      <time datetime="${esc(version.at)}"${version.backfilled ? ' title="事后补记"' : ""}>${monthDay(version.at)}</time>
       <p>${version.status_label ? `${esc(version.status_label)}：` : ""}${multiline(version.note)}</p>
-    </li>`).join("")}</ol>` : "";
+    </li>`).join("")}</ol>${backfilled ? `<p class="note-history-caption">其中 ${backfilled} 版是事后补记的</p>` : ""}` : "";
   return `<section class="detail-section is-progress"><h3>${esc(item.note_label)}${when}</h3>${current}${earlier}</section>`;
 }
 

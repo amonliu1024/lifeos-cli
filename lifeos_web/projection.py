@@ -32,7 +32,7 @@ def _project_summary(project: dict[str, Any] | None) -> dict[str, Any] | None:
 
 
 def _note_progress(entry: dict[str, Any], events: list[dict[str, Any]]) -> dict[str, Any]:
-    """Date the current 进展 and list the earlier ones the audit log recorded, newest first."""
+    """Date the current 进展 and list the earlier ones the audit log knows, newest first."""
 
     kind = entry.get("kind")
     versions = note_versions(entry, events)
@@ -47,6 +47,7 @@ def _note_progress(entry: dict[str, Any], events: list[dict[str, Any]]) -> dict[
                 "at": version["at"],
                 "note": version["note"],
                 "status_label": status_label(kind, version["status"]) if version["status_changed"] else None,
+                "backfilled": version["backfilled"],
             }
             for version in reversed(versions)
         ],
