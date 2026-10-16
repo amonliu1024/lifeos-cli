@@ -219,7 +219,7 @@ def add_entry_common_arguments(parser, *, source_required=True, context_help=Non
         "--context",
         required=context_help is not None,
         type=validate_nonempty_text,
-        help=context_help or "理解或执行需要的一段背景；可选。",
+        help=context_help or "读正文还缺的那一句（为什么在你账上，或说法指什么）和一个详情入口；可选。",
     )
     add_source_argument(parser, required=source_required)
     add_actor_arguments(parser)
@@ -358,6 +358,11 @@ def register_work_parser(domains):
     add_from_argument(command)
     command.add_argument("--star", action="store_true", help="标星：这件事重要。")
     command.add_argument("--due", type=validate_date, metavar="YYYY-MM-DD", help="结果硬截止日期。")
+    command.add_argument(
+        "--note",
+        type=validate_nonempty_text,
+        help="记下时已有的一句进展：现在怎样、卡在哪、下一步在谁手上；可选。",
+    )
     command.add_argument(
         "--owner",
         type=validate_nonempty_text,

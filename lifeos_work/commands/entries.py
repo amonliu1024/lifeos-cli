@@ -116,7 +116,7 @@ def add_entry(args, kind, prepare=None):
             entry_id=entry["id"],
             related_entry_id=source["id"] if source else None,
             sources=args.source,
-            status_change=(None, "open", None),
+            status_change=(None, "open", entry.get("note")),
         )
         if kind == "task" and entry.get("due"):
             event["schedule"] = {"due": entry["due"]}
@@ -127,6 +127,7 @@ def command_task_add(args):
     def prepare(entry, _entries):
         entry["due"] = args.due
         entry["owner"] = args.owner
+        entry["note"] = args.note
         return f"；负责人 {args.owner}" if args.owner else ""
 
     add_entry(args, "task", prepare)

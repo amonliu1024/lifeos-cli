@@ -92,7 +92,11 @@ def brief_task_line(task, projects_by_key, reference_date, *, star=False):
     if label:
         parts.append(f"`{label}`")
     prefix = "★ " if star and task.get("starred") else ""
-    return f"- {prefix}{' · '.join(parts)}"
+    line = f"- {prefix}{' · '.join(parts)}"
+    # 进展紧跟在正文下面，简报里那一行才看得出下一步在谁手上。
+    if task.get("note"):
+        line += f"\n  - 进展：{task['note']}"
+    return line
 
 
 def brief_entry_line(entry, projects_by_key, *, star=True):

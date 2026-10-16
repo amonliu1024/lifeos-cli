@@ -428,6 +428,15 @@ class BriefViewTest(unittest.TestCase):
         self.assertEqual(3, output.count("（无）"))
         self.assertLess(output.index("重要问题"), output.index("普通问题"))
         self.assertIn("- 一个点子", output)
+
+    def test_progress_sits_under_its_task(self):
+        entries = [
+            synthetic_entry("task", "TASK-20260901-001", text="有进展的事", note="等对方回复"),
+            synthetic_entry("task", "TASK-20260901-002", text="还没进展的事"),
+        ]
+        output = self.brief(entries)
+        self.assertIn("- 有进展的事\n  - 进展：等对方回复\n", output)
+        self.assertEqual(1, output.count("进展："))
         self.assertNotIn("已划掉", output)
 
     def test_scheduled_tasks_stay_hidden_until_their_month(self):
@@ -623,6 +632,16 @@ class EntryWorkflowTest(CLITestCase):
         self.assertIn("背景：为什么做，做到哪算完", history)
         self.assertIn("星标：标星", history)
         self.assertIn("完成了什么：研发排进了 11 月", history)
+
+    def test_task_add_can_start_with_progress(self):
+        task_id = self.add("task-add", "--text", "带着进展记下", "--note", "还没开始，由我来做", "--source", "x")
+        self.assertEqual("还没开始，由我来做", self.entry(task_id)["note"])
+        created = self.events()[-1]
+        self.assertEqual(
+            (None, "open", "还没开始，由我来做"),
+            (created["status_from"], created["status_to"], created["note"]),
+        )
+        self.validate_runtime()
 
     def test_first_edit_of_an_older_entry_keeps_what_it_replaced(self):
         older_events = (self.data_dir / "events.jsonl").read_bytes()
