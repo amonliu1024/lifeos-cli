@@ -26,7 +26,7 @@ from .config import (
     SELF_ENTITY_ID,
 )
 from .errors import fail
-from .model import idempotent_event, iso_now, make_event, now, source_objects
+from .model import idempotent_event, iso_now, make_event, now, request_fingerprint, source_objects
 from .validation import current_data_errors
 from .views import current_view_contents
 from lifeos_projects import (
@@ -181,6 +181,12 @@ def exclusive_lock():
 def ensure_not_duplicate(events, args):
     existing = idempotent_event(events, getattr(args, "idempotency_key", None))
     if existing:
+        recorded = existing.get("request_fingerprint")
+        if recorded and recorded != request_fingerprint(args):
+            fail(
+                f"idempotency key 已用于另一条写入（{existing['event_id']}）；"
+                "先回读核对是不是重复执行，确属新的写入就换一个键"
+            )
         print(f"{existing['event_id']} 已处理相同 idempotency key，未重复写入")
         return True
     return False

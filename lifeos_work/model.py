@@ -8,6 +8,8 @@ way.
 """
 
 import argparse
+import hashlib
+import json
 import re
 from datetime import date, datetime, time, timedelta
 
@@ -227,7 +229,19 @@ def make_event(
         event["field_changes"] = field_changes
     if getattr(args, "idempotency_key", None):
         event["idempotency_key"] = args.idempotency_key
+        event["request_fingerprint"] = request_fingerprint(args)
     return event
+
+
+def request_fingerprint(args):
+    """What this write asked for; a retry under the same key must ask for the same."""
+
+    fields = {
+        name: value for name, value in vars(args).items()
+        if name != "idempotency_key" and not callable(value)
+    }
+    payload = json.dumps(fields, ensure_ascii=False, sort_keys=True, default=str)
+    return hashlib.sha256(payload.encode("utf-8")).hexdigest()[:16]
 
 
 def event_entry_ids(event):
@@ -552,6 +566,7 @@ __all__ = [
     "parsed_date",
     "project_label",
     "owner_name",
+    "request_fingerprint",
     "review_period_label",
     "schedule_change",
     "scheduled_month_arrived",

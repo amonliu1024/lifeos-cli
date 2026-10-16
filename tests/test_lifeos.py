@@ -749,6 +749,14 @@ class EntryWorkflowTest(CLITestCase):
         notes = [item for item in self.load_json("entries.json")["entries"] if item["text"] == "只记一次"]
         self.assertEqual(1, len(notes))
 
+    def test_reusing_a_key_for_a_different_write_is_refused(self):
+        self.run_cli("note-add", "--text", "第一条", "--idempotency-key", "note:shared")
+        before = self.snapshot_state()
+        refused = self.run_cli("note-add", "--text", "第二条", "--idempotency-key", "note:shared", check=False)
+        self.assertNotEqual(0, refused.returncode)
+        self.assertIn("已用于另一条写入", refused.stderr)
+        self.assertEqual(before, self.snapshot_state())
+
     def test_term_rename_updates_owner_names(self):
         term_id = self.add(
             "term-add", "--name", "凯健", "--kind", "person", "--description", "合成人员", "--source", "x"
