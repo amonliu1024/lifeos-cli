@@ -101,6 +101,8 @@ Project Catalog 扫描全部配置根，不跟随符号链接，也不从 Work �
 
 DChat 的 `p2p / extp2p` 私聊全部进入正文采集；`channel / extchannel` 只有 VID 至少由一份当前有效项目清单声明时进入。多个项目声明同一 VID 时只采集一次，索引保留全部项目关联；VID 从全部清单退出只停止后续正文读取，既有不可变 revision 继续保留。
 
+DChat Service 负责最多三路会话读取，同一会话的窗口拆分保持顺序执行；工作线程返回独立结果，主流程按目录顺序汇总并上报进度，整轮结束后由 Store 统一保存。CLI 将进度写入 stderr，最终输出与持久化 Schema 保持不变。
+
 日历经 DChat 同一个已批准的 dws wrapper 只读 D-Chat 日程：按日报的自然日窗口采集，`search` 单页上限 10 条时递归拆分窗口，每条日程只保留标题、起止时间、类型和参会人姓名，内容寻址存成不可变快照，scan manifest 只引用快照；回复状态、组织者、描述和链接不进 Runtime。循环会议的出席名单是 Calendar Runtime 里的只追加日志（`series.jsonl`），当前值取最后一条，它只是 Daily 提议的默认值，去没去每次仍由本人确认。日报 frontmatter 只在给出 `calendar_scan_id` 时带 `calendar_events` 与 `calendar_event_ids`，旧日报形状不变。
 
 Sessions checkpoint 的 `cache_generation` 由来源 Adapter revision、shared extraction revision 和 Slice Schema 共同决定。来源特有解析变化只提升对应 Adapter revision，共享提取或判断语义变化提升 shared extraction revision。

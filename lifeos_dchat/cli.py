@@ -60,6 +60,19 @@ def command_configure(args: Any) -> None:
     _emit(args, payload, ["DChat 已配置。" if payload["changed"] else "DChat 配置未变化。"])
 
 
+def _scan_progress(event: Dict[str, Any]) -> None:
+    running = "、".join(
+        f"{row['conversation_id']}（{row['elapsed_seconds']:.1f}s）"
+        for row in event["running"]
+    ) or "无"
+    print(
+        f"[DChat] 已完成 {event['completed']}/{event['total']} · "
+        f"失败 {event['failed']} · 部分缺失 {event['partial']} · "
+        f"耗时 {event['elapsed_seconds']:.1f}s · 正在读取 {running}",
+        file=sys.stderr, flush=True,
+    )
+
+
 def command_scan(args: Any) -> None:
     try:
         store = _store(args)
@@ -72,7 +85,11 @@ def command_scan(args: Any) -> None:
             {row["conversation_id"] for row in project_rows},
             limit=args.limit,
         )
-        payload = store.write_scan(service.scan(_window(args)))
+        window = _window(args)
+        print("[DChat] 正在读取会话目录…", file=sys.stderr, flush=True)
+        result = service.scan(window, progress=_scan_progress)
+        print("[DChat] 读取结束，正在保存扫描结果…", file=sys.stderr, flush=True)
+        payload = store.write_scan(result)
     except (ConfigError, DChatError, DChatStoreError, ValueError) as exc:
         _fail(str(exc))
     summary = payload["summary"]

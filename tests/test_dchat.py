@@ -4,6 +4,9 @@ import stat
 import subprocess
 import sys
 import tempfile
+import threading
+from concurrent.futures import ThreadPoolExecutor
+from unittest.mock import patch
 import unittest
 from datetime import datetime
 from pathlib import Path
@@ -173,6 +176,88 @@ class DChatScopeTest(unittest.TestCase):
         self.assertEqual("complete", row["status"])
         self.assertEqual([], row["warnings"])
         self.assertEqual("2026-08-28T00:00:00+00:00", row["messages"][0]["occurred_at"])
+
+
+class DChatConcurrencyTest(unittest.TestCase):
+    def test_bounded_concurrency_order_failures_and_live_progress(self):
+        lock = threading.Lock()
+        first_wave = threading.Event()
+        heartbeat = threading.Event()
+        released = {str(i): threading.Event() for i in range(5)}
+        active = peak = 0
+        events = []
+        callback_threads = set()
+
+        class BlockingClient(FakeDChatClient):
+            def dump_messages(self, cid, start, end, limit):
+                nonlocal active, peak
+                with lock:
+                    active += 1
+                    peak = max(peak, active)
+                    if active == 3:
+                        first_wave.set()
+                try:
+                    if not released[cid].wait(5):
+                        raise RuntimeError("test did not release query")
+                    if cid == "1":
+                        raise DChatClientError("history_forbidden", "denied")
+                    if cid == "2":
+                        raise DChatClientError("temporary_dependency_failure", "temporary")
+                    return super().dump_messages(cid, start, end, limit)
+                finally:
+                    with lock:
+                        active -= 1
+
+        def progress(event):
+            callback_threads.add(threading.get_ident())
+            events.append(event)
+            if len(events) >= 2 and event["completed"] == 0:
+                heartbeat.set()
+            if event["completed"]:
+                for ready in released.values():
+                    ready.set()
+
+        client = BlockingClient(
+            [{"vchannel_id": str(i), "type": "p2p"} for i in range(5)],
+            {str(i): [message(str(i), "2026-08-24T08:00:00+00:00", "value")] for i in range(5)},
+        )
+        with patch("lifeos_dchat.core.PROGRESS_INTERVAL_SECONDS", 0.01):
+            with ThreadPoolExecutor(max_workers=1) as caller:
+                task = caller.submit(DChatService(client, set()).scan,
+                                     TimeWindow.from_values("2026-08-24", "2026-08-25"), progress=progress)
+                try:
+                    self.assertTrue(first_wave.wait(3), "three queries must overlap")
+                    self.assertTrue(heartbeat.wait(3), "progress must update during blocked reads")
+                    released["2"].set()
+                    result = task.result(timeout=5)
+                finally:
+                    for ready in released.values():
+                        ready.set()
+        self.assertEqual(3, peak)
+        self.assertEqual([str(i) for i in range(5)], [r["conversation_id"] for r in result["conversations"]])
+        self.assertEqual(["complete", "failed", "partial", "complete", "complete"], [r["status"] for r in result["conversations"]])
+        self.assertEqual("partial", result["status"])
+        self.assertEqual(3, result["summary"]["messages"])
+        self.assertEqual(5, result["summary"]["body_queries"])
+        self.assertEqual(1, result["summary"]["failed"])
+        self.assertEqual(1, result["summary"]["partial"])
+        self.assertEqual(1, len(callback_threads))
+        self.assertEqual(5, events[-1]["completed"])
+        self.assertEqual(1, events[-1]["failed"])
+        self.assertEqual(1, events[-1]["partial"])
+        self.assertEqual([], events[-1]["running"])
+        self.assertTrue(all(len(e["running"]) <= 3 for e in events))
+        self.assertEqual(sorted(e["completed"] for e in events), [e["completed"] for e in events])
+
+    def test_empty_scan_reports_completion_without_queries(self):
+        events = []
+        result = DChatService(FakeDChatClient([], {}), set()).scan(
+            TimeWindow.from_values("2026-08-24", "2026-08-25"), progress=events.append)
+        self.assertEqual("complete", result["status"])
+        self.assertEqual(0, result["summary"]["body_queries"])
+        self.assertEqual(0, events[-1]["total"])
+        self.assertEqual(0, events[-1]["completed"])
+        self.assertEqual([], events[-1]["running"])
 
 
 class DChatStoreTest(unittest.TestCase):
@@ -459,9 +544,13 @@ class DChatCLITest(unittest.TestCase):
         ).stdout)
         self.assertTrue(configured["changed"])
 
-        scanned = json.loads(self.run_lifeos(
+        scan_process = self.run_lifeos(
             "dchat", "scan", "--from", "2026-08-24", "--to", "2026-08-25", "--json",
-        ).stdout)
+        )
+        scanned = json.loads(scan_process.stdout)
+        self.assertIn("已完成 2/2", scan_process.stderr)
+        self.assertIn("正在保存扫描结果", scan_process.stderr)
+        self.assertNotIn("synthetic direct", scan_process.stderr)
         self.assertEqual("complete", scanned["status"])
         self.assertEqual(2, scanned["summary"]["messages"])
         self.assertEqual(1, scanned["summary"]["metadata_only"])

@@ -2,9 +2,11 @@
 
 from __future__ import annotations
 
+from concurrent.futures import FIRST_COMPLETED, ThreadPoolExecutor, wait
 from dataclasses import dataclass
 from datetime import date, datetime, time, timedelta, timezone
-from typing import Any, Dict, Iterable, List, Mapping, Sequence
+from time import monotonic
+from typing import Any, Callable, Dict, Iterable, List, Mapping, Optional, Sequence
 from zoneinfo import ZoneInfo
 
 from .client import DChatClient, DChatClientError
@@ -27,6 +29,8 @@ MAX_SOURCE_WINDOW = timedelta(days=30)
 MIN_SPLIT_WINDOW = timedelta(seconds=1)
 DEFAULT_LIMIT = 500
 MAX_MISSING_TIME_DETAILS = 8
+SCAN_CONCURRENCY = 3
+PROGRESS_INTERVAL_SECONDS = 5
 
 
 class DChatError(RuntimeError):
@@ -88,15 +92,16 @@ class DChatService:
         }
         self.limit = limit
 
-    def scan(self, window: TimeWindow) -> Dict[str, Any]:
+    def scan(
+        self, window: TimeWindow, *, progress: Optional[Callable[[Dict[str, Any]], None]] = None
+    ) -> Dict[str, Any]:
+        started = monotonic()
         try:
             inventory = self.client.list_chats()
         except DChatClientError as exc:
             raise DChatError(f"{exc.kind}：{exc}") from exc
         rows: List[Dict[str, Any]] = []
-        total_messages = 0
-        total_revisions = 0
-        body_queries = 0
+        jobs: List[int] = []
         skipped_before_window = 0
         for raw_chat in inventory:
             if not isinstance(raw_chat, Mapping):
@@ -134,20 +139,55 @@ class DChatService:
                     skipped_before_window += 1
                     rows.append(row)
                     continue
-                try:
-                    body_queries += 1
-                    messages, windows, read_warnings = self._read_window(cid, window)
-                    row["messages"] = messages
-                    row["windows"] = windows
-                    row["warnings"].extend(read_warnings)
-                    if read_warnings:
-                        row["status"] = "partial"
-                    total_messages += len(messages)
-                    total_revisions += len(messages)
-                except DChatClientError as exc:
-                    row["status"] = "failed" if exc.kind in {"history_forbidden", "conversation_unavailable"} else "partial"
-                    row["warnings"].append(exc.kind)
+                jobs.append(len(rows))
             rows.append(row)
+
+        completed = failed_reads = partial_reads = 0
+        active: Dict[Any, tuple[int, float]] = {}
+
+        def report_progress() -> None:
+            if progress is not None:
+                now = monotonic()
+                progress({
+                    "total": len(jobs), "completed": completed,
+                    "failed": failed_reads, "partial": partial_reads,
+                    "elapsed_seconds": round(now - started, 1),
+                    "running": [
+                        {"conversation_id": rows[index]["conversation_id"],
+                         "elapsed_seconds": round(now - began, 1)}
+                        for index, began in active.values()
+                    ],
+                })
+
+        pending = iter(jobs)
+        pool = ThreadPoolExecutor(max_workers=SCAN_CONCURRENCY)
+
+        def fill_workers() -> None:
+            while len(active) < SCAN_CONCURRENCY:
+                index = next(pending, None)
+                if index is None:
+                    break
+                began = monotonic()
+                future = pool.submit(self._read_conversation, rows[index], window)
+                active[future] = (index, began)
+
+        try:
+            fill_workers()
+            report_progress()
+            while active:
+                done, _ = wait(active, timeout=PROGRESS_INTERVAL_SECONDS, return_when=FIRST_COMPLETED)
+                for future in done:
+                    index, _ = active.pop(future)
+                    rows[index] = future.result()
+                    completed += 1
+                    failed_reads += rows[index]["status"] == "failed"
+                    partial_reads += rows[index]["status"] == "partial"
+                fill_workers()
+                report_progress()
+        finally:
+            pool.shutdown(wait=True, cancel_futures=True)
+
+        total_messages = sum(len(row["messages"]) for row in rows)
         failed = sum(1 for row in rows if row["status"] == "failed")
         partial = sum(1 for row in rows if row["status"] == "partial")
         status = "failed" if rows and failed == len(rows) else "partial" if failed or partial else "complete"
@@ -165,11 +205,26 @@ class DChatService:
                 "failed": failed,
                 "partial": partial,
                 "messages": total_messages,
-                "message_observations": total_revisions,
-                "body_queries": body_queries,
+                "message_observations": total_messages,
+                "body_queries": len(jobs),
                 "skipped_before_window": skipped_before_window,
             },
         }
+
+    def _read_conversation(self, row: Dict[str, Any], window: TimeWindow) -> Dict[str, Any]:
+        # Workers own their result; only the caller aggregates progress and rows.
+        result = {**row, "warnings": list(row["warnings"])}
+        try:
+            messages, windows, warnings = self._read_window(row["conversation_id"], window)
+            result["messages"] = messages
+            result["windows"] = windows
+            result["warnings"].extend(warnings)
+            if warnings:
+                result["status"] = "partial"
+        except DChatClientError as exc:
+            result["status"] = "failed" if exc.kind in {"history_forbidden", "conversation_unavailable"} else "partial"
+            result["warnings"].append(exc.kind)
+        return result
 
     def _read_window(self, cid: str, window: TimeWindow) -> tuple[List[Dict[str, Any]], List[Dict[str, Any]], List[str]]:
         pending: List[tuple[datetime, datetime]] = []

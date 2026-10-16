@@ -92,6 +92,8 @@ Work 的当前事实只有三类：按天记下的每一笔（`entries.json`）�
 
 Sessions、Git、DChat 和 Calendar 四类证据全部只读来源、只写私有快照，既不改动来源，也不写入 Work。Sessions 适配器只读来源文件；Git 证据只读取显式注册的本地检出，不联系远端；DChat 群聊只在当前有效 `lifeos-project.json` 的 `sources.dchat.groups` 中声明时读取正文。Calendar 只读日程并保存私有快照，参会情况由本人确认。各来源的采集窗口、索引和 JSON 输出以 `lifeos sessions/git/dchat/calendar --help` 为准。
 
+`lifeos dchat scan` 最多同时读取三个会话；扫描进度输出到 stderr，包含完成数、失败与部分缺失数、总耗时和正在读取的会话耗时。`--json` 的 stdout 仍只返回最终扫描结果。
+
 ## 日报与周期报
 
 日报正文由 Skill 的 Daily 分支生成，CLI 只拥有它的落点、权限、frontmatter、确认状态，以及重做时的旧稿留存。启用日历后，日报多一节「会议」，记当天你确认参加的会、每场服务哪个项目和总时长；日历只提供当天排了什么，去没去每次都由你确认，循环会议可以用 `lifeos calendar series set` 记下默认去或不去，作为下次提议的起点。周期报不重新扫描会话、提交或聊天，只读取目标周期内已确认的日报。`lifeos reports path --day <日期> --json` 是只读状态入口，返回该日在 Asia/Shanghai 的完整自然日窗口。重做留下的旧稿快照用 `lifeos reports prune` 查看，加 `--apply` 才删除，当前报告不在范围内。
