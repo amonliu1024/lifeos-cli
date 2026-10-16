@@ -8,7 +8,6 @@ way.
 """
 
 import argparse
-import os
 import re
 from datetime import date, datetime, time, timedelta
 
@@ -172,14 +171,6 @@ def generate_entry_id(kind, entries):
     )
 
 
-def actor_from(args):
-    return {
-        "kind": getattr(args, "actor_kind", "agent"),
-        "name": getattr(args, "actor_name", None)
-        or os.environ.get("LIFEOS_ACTOR", "Agent"),
-    }
-
-
 def source_objects(values):
     observed_at = now().date().isoformat()
     return [
@@ -214,7 +205,6 @@ def make_event(
     event = {
         "event_id": generate_id("EVT", [item.get("event_id", "") for item in events]),
         "occurred_at": iso_now(),
-        "actor": actor_from(args),
         "kind": kind,
         "summary": summary,
         "sources": sources or [],
@@ -529,7 +519,6 @@ def logged_on(entry):
 
 
 __all__ = [
-    "actor_from",
     "brief_calendar_label",
     "brief_date_label",
     "date_in_period",

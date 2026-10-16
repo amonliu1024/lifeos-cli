@@ -145,25 +145,12 @@ QUERY_COMMANDS = {
 }
 
 
-def add_actor_arguments(parser, *, include_idempotency=True):
+def add_idempotency_argument(parser):
     parser.add_argument(
-        "--actor-kind",
-        choices=["agent", "user"],
-        default="agent",
-        metavar="KIND",
-        help="记录操作者类型；默认 agent，人工确认时可用 user。",
+        "--idempotency-key",
+        metavar="KEY",
+        help="重试时使用稳定键；命中同一已处理事件后不会重复写入。",
     )
-    parser.add_argument(
-        "--actor-name",
-        metavar="NAME",
-        help="记录操作者名称；默认读取 LIFEOS_ACTOR，未设置时使用 Agent。",
-    )
-    if include_idempotency:
-        parser.add_argument(
-            "--idempotency-key",
-            metavar="KEY",
-            help="重试时使用稳定键；命中同一已处理事件后不会重复写入。",
-        )
 
 
 def add_source_argument(parser, required=False):
@@ -222,7 +209,7 @@ def add_entry_common_arguments(parser, *, source_required=True, context_help=Non
         help=context_help or "读正文还缺的那一句（为什么在你账上，或说法指什么）和一个详情入口；可选。",
     )
     add_source_argument(parser, required=source_required)
-    add_actor_arguments(parser)
+    add_idempotency_argument(parser)
 
 
 def add_from_argument(parser):
@@ -285,7 +272,6 @@ def register_work_parser(domains):
         help="本人别名，可重复提供",
     )
     add_source_argument(command, required=True)
-    add_actor_arguments(command, include_idempotency=False)
     command.set_defaults(handler=command_init)
 
     command = commands.add_parser("now", help="显示当前工作视图")
@@ -338,7 +324,7 @@ def register_work_parser(domains):
     )
     command.add_argument("--reason", help="暂停或归档的原因。")
     add_source_argument(command, required=True)
-    add_actor_arguments(command)
+    add_idempotency_argument(command)
     command.set_defaults(handler=command_project_track)
 
     command = commands.add_parser("project-update", help="更新项目引用")
@@ -350,7 +336,7 @@ def register_work_parser(domains):
     )
     command.add_argument("--reason", help="暂停或归档的原因。")
     add_source_argument(command)
-    add_actor_arguments(command)
+    add_idempotency_argument(command)
     command.set_defaults(handler=command_project_update)
 
     command = commands.add_parser("task-add", help="记一条待办")
@@ -413,14 +399,14 @@ def register_work_parser(domains):
     owner_change.add_argument("--mine", action="store_true", help="改回自己负责。")
     command.add_argument("--reopen", action="store_true", help="把排到以后的待办取回成待做。")
     add_source_argument(command)
-    add_actor_arguments(command)
+    add_idempotency_argument(command)
     command.set_defaults(handler=command_entry_update)
 
     command = commands.add_parser("task-done", help="完成待办")
     command.add_argument("id", help="待办 ID（TASK-*）。")
     command.add_argument("--note", required=True, type=validate_nonempty_text, help="完成了什么。")
     add_source_argument(command, required=True)
-    add_actor_arguments(command)
+    add_idempotency_argument(command)
     command.set_defaults(handler=command_task_done)
 
     command = commands.add_parser("task-schedule", help="把待办排到以后某个月")
@@ -428,7 +414,7 @@ def register_work_parser(domains):
     command.add_argument("--month", required=True, type=validate_month, metavar="YYYY-MM", help="排到哪个月；必须是以后的月份。")
     command.add_argument("--note", type=validate_nonempty_text, help="为什么现在不做；可选。")
     add_source_argument(command, required=True)
-    add_actor_arguments(command)
+    add_idempotency_argument(command)
     command.set_defaults(handler=command_task_schedule)
 
     command = commands.add_parser("task-reschedule", help="调整待办截止时间")
@@ -443,7 +429,7 @@ def register_work_parser(domains):
     )
     command.add_argument("--note", help="日期变化的补充说明；需同时给 --reason-code。")
     add_source_argument(command, required=True)
-    add_actor_arguments(command)
+    add_idempotency_argument(command)
     command.set_defaults(handler=command_task_reschedule)
 
     command = commands.add_parser("task-schedule-history", help="查看待办截止时间历史")
@@ -456,7 +442,7 @@ def register_work_parser(domains):
     command.add_argument("--note", required=True, type=validate_nonempty_text, help="答案。")
     command.add_argument("--by", metavar="INS-ID", help="答案是哪条洞见；可选。")
     add_source_argument(command, required=True)
-    add_actor_arguments(command)
+    add_idempotency_argument(command)
     command.set_defaults(handler=command_question_answer)
 
     command = commands.add_parser("entry-drop", help="划掉一笔")
@@ -464,13 +450,13 @@ def register_work_parser(domains):
     command.add_argument("--note", required=True, type=validate_nonempty_text, help="为什么划掉；洞见就是为什么退役。")
     command.add_argument("--by", metavar="INS-ID", help="洞见被新洞见取代时，指向新的那条。")
     add_source_argument(command, required=True)
-    add_actor_arguments(command)
+    add_idempotency_argument(command)
     command.set_defaults(handler=command_entry_drop)
 
     command = commands.add_parser("entry-keep", help="月初盘点里选择继续")
     command.add_argument("id", help="待办、随记或疑问的 ID。")
     add_source_argument(command)
-    add_actor_arguments(command)
+    add_idempotency_argument(command)
     command.set_defaults(handler=command_entry_keep)
 
     command = commands.add_parser("entry-backfill", help="补记一版更早的进展")
@@ -478,7 +464,7 @@ def register_work_parser(domains):
     command.add_argument("--as-of", required=True, type=validate_date, metavar="YYYY-MM-DD", help="这句进展实际成立的日期。")
     command.add_argument("--note", required=True, type=validate_nonempty_text, help="当时的一句进展。")
     add_source_argument(command, required=True)
-    add_actor_arguments(command)
+    add_idempotency_argument(command)
     command.set_defaults(handler=command_entry_backfill)
 
     command = commands.add_parser("glossary", help="查询人员、组织、项目、系统与专有概念")
@@ -498,7 +484,7 @@ def register_work_parser(domains):
         help="确认日期（YYYY-MM-DD）；省略时使用本地当前日期。",
     )
     add_source_argument(command, required=True)
-    add_actor_arguments(command)
+    add_idempotency_argument(command)
     command.set_defaults(handler=command_term_add)
 
     command = commands.add_parser("term-update", help="更新实体名词")
@@ -513,7 +499,7 @@ def register_work_parser(domains):
         help="更新确认日期（YYYY-MM-DD）；省略时保持当前值不变。",
     )
     add_source_argument(command)
-    add_actor_arguments(command)
+    add_idempotency_argument(command)
     command.set_defaults(handler=command_term_update)
 
     command = commands.add_parser("show", help="显示一条记录与它的历史")

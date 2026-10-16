@@ -6,6 +6,7 @@
 
 ### 不兼容变更
 
+- 移除写入命令的 `--actor-kind` 与 `--actor-name`，`LIFEOS_ACTOR` 环境变量也不再读取：新写入的审计事件不再记录操作者，记录出处看 `--source`。已有事件里的操作者字段保持原样。
 - 移除 `lifeos work migrate-v2`：v1 Runtime 不再能用当前版本迁移，普通命令遇到 v1 Runtime 也不再提示迁移，只报告 Runtime 尚未初始化。
 - 移除 `lifeos reports migrate-activity-ids`：含旧长 Activity ID 的日报不再能用当前版本转换成短 ID。
 - 推送到服务器改为 `lifeos push`，预览改为 `lifeos push -n`；设置镜像目标改为 `lifeos config mirror --target host:path`。`lifeos mirror` 整组命令移除，已配置的镜像目标照常生效，不用重新设置。

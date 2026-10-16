@@ -141,8 +141,6 @@ class WorkRuntimeInitTest(unittest.TestCase):
             "--self-name", "测试用户",
             "--self-alias", "sample-user",
             "--source", "本人确认",
-            "--actor-kind", "user",
-            "--actor-name", "测试用户",
         )
         self.assertIn("已初始化", created.stdout)
         for name, collection in (("projects.json", "projects"), ("entries.json", "entries")):
