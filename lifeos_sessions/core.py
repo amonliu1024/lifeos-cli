@@ -997,9 +997,10 @@ class SessionsService:
             raise SessionError("rebuild --apply requires all registered sources and no --include")
         staging_parent = target.root.parent
         stage_directory = Path(tempfile.mkdtemp(prefix=f".{target.root.name}.rebuild-", dir=str(staging_parent)))
-        staging_store = SessionsStore(stage_directory, create=True)
-        staged_service = SessionsService(self.adapters, staging_store)
+        staging_store = SessionsStore(stage_directory)
         try:
+            staging_store.ensure_initialized()
+            staged_service = SessionsService(self.adapters, staging_store)
             result = staged_service.scan(
                 window,
                 sources=sources,
@@ -1031,7 +1032,12 @@ class SessionsService:
             result["rebuild"].update({"active_unchanged": False, "applied": True})
             return result
         finally:
-            if stage_directory.exists():
-                import shutil
+            try:
+                if stage_directory.exists():
+                    import shutil
 
-                shutil.rmtree(stage_directory)
+                    shutil.rmtree(stage_directory)
+            finally:
+                # Only this rebuild uses the temporary store; its sibling
+                # lock is no longer needed even after activation moved the tree.
+                staging_store.switch_lock_path.unlink(missing_ok=True)

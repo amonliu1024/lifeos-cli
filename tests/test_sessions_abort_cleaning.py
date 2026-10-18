@@ -197,6 +197,35 @@ class _FakeAdapter:
 
 
 class RebuildAndOmissionTest(unittest.TestCase):
+    def test_rebuild_cleans_temporary_tree_and_lock_on_every_exit(self):
+        for outcome in ("preview", "apply", "failed_scan", "init_error", "scan_error", "activation_error"):
+            with self.subTest(outcome=outcome), tempfile.TemporaryDirectory() as temporary:
+                parent = Path(temporary)
+                active = SessionsStore(parent / "sessions", create=True)
+                adapter = _FakeAdapter("codex", "failed" if outcome == "failed_scan" else "complete")
+                service = SessionsService({"codex": adapter}, active)
+                if outcome == "init_error":
+                    # Initialization has already created the sibling lock
+                    # when the database setup fails.
+                    patch = mock.patch.object(SessionsStore, "_initialize_db", side_effect=RuntimeError("init"))
+                elif outcome == "scan_error":
+                    patch = mock.patch.object(SessionsService, "scan", side_effect=RuntimeError("scan"))
+                elif outcome == "activation_error":
+                    patch = mock.patch.object(active, "activate_staging", side_effect=RuntimeError("activation"))
+                else:
+                    patch = mock.patch.object(adapter, "scan", wraps=adapter.scan)
+                with patch:
+                    if outcome.endswith("error"):
+                        with self.assertRaises(RuntimeError):
+                            service.rebuild(WINDOW, apply=True)
+                    else:
+                        result = service.rebuild(WINDOW, apply=outcome != "preview")
+                        self.assertEqual(outcome == "apply", result["rebuild"]["applied"])
+                self.assertEqual([], list(parent.glob(".sessions.rebuild-*")))
+                self.assertEqual([], list(parent.glob("..sessions.rebuild-*.switch.lock")))
+                self.assertTrue(active.switch_lock_path.is_file())
+                self.assertEqual([], active.validate())
+
     def test_omission_is_idempotent_and_never_enters_fts(self):
         with tempfile.TemporaryDirectory() as temporary:
             store = SessionsStore(Path(temporary) / "sessions", create=True)
