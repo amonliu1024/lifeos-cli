@@ -15,6 +15,7 @@ from dataclasses import dataclass
 from pathlib import Path
 from typing import Any, Dict, List, Mapping, Optional, Sequence, Tuple
 
+from .evidence import record_locator
 from .core import AdapterResult, adapter_cache_generation
 from .responses import (
     SourceProfile,
@@ -357,6 +358,7 @@ def _project_records(
                     "call_id": clean_text(message.get("toolCallId")) or None,
                     "name": clean_text(message.get("toolName")) or "tool",
                     "status": status,
+                    "output": _text_blocks(message.get("content")),
                     "details": details if isinstance(details, (Mapping, list, tuple)) else None,
                 }
                 if status == "error":
@@ -453,6 +455,15 @@ def _project_records(
             turn_warnings.setdefault(turn_id, []).append(
                 f"pi_unknown_stop_reason:{reason}"
             )
+    originals = {str(record.get("id")): record.get("_evidence_record") for record in records if record.get("id")}
+    for record in projected:
+        identity = str(record.get("id") or "")
+        original = originals.get(identity)
+        if original is None:
+            candidates = [value for key, value in originals.items() if identity.startswith(key + ":")]
+            original = candidates[0] if len(candidates) == 1 else None
+        if original:
+            record["_evidence_record"] = original
     return projected, warnings, turn_warnings
 
 
@@ -466,10 +477,13 @@ def _read_jsonl(path: Path, root: Path) -> _FileRead:
     locator = _relative_locator(root, path)
 
     with path.open("rb") as handle:
+        position = 0
         while True:
             raw_line = handle.readline()
             if not raw_line:
                 break
+            start = position
+            position += len(raw_line)
             stripped = raw_line.strip()
             if not stripped:
                 continue
@@ -484,7 +498,7 @@ def _read_jsonl(path: Path, root: Path) -> _FileRead:
             if not isinstance(decoded, Mapping):
                 malformed = True
                 continue
-            records.append(decoded)
+            records.append({**decoded, "_evidence_record": record_locator(locator, raw_line, start)})
             last_hash = _sha(decoded)
             timestamp_ms = _entry_timestamp(decoded)
             if timestamp_ms is not None:

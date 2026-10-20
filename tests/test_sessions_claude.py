@@ -102,7 +102,7 @@ class ClaudeAdapterFixtureTest(unittest.TestCase):
             result = ClaudeAdapter(root).scan(self.request(end="2026-08-08T00:01:00Z"))
             item = _slice_dict(result.slices[0])
 
-        self.assertEqual(["cat README.md"], item["execution_evidence"]["tool_calls"])
+        self.assertEqual(["cat README.md: pending"], item["execution_evidence"]["tool_calls"])
         self.assertNotIn("Bash", item["execution_evidence"]["tool_calls"])
 
     def test_checkpoint_reuses_stable_slices_and_append_invalidates_cache(self):
@@ -328,7 +328,8 @@ class ClaudeAdapterFixtureTest(unittest.TestCase):
             )
             result = ClaudeAdapter(root).scan(self.request(end="2026-08-08T00:01:00Z"))
             item = _slice_dict(result.slices[0])
-            self.assertEqual(["src/app.py"], item["execution_evidence"]["changed_targets"])
+            self.assertEqual([], item["execution_evidence"]["changed_targets"])
+            self.assertIn("Edit: pending", item["execution_evidence"]["tool_calls"])
             self.assertEqual(3, len(item["source_refs"]))
             self.assertEqual({"target-user", "edit-use", "target-final"}, {ref.rsplit(":", 1)[-1] for ref in item["source_refs"]})
 

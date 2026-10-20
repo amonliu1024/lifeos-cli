@@ -33,7 +33,7 @@ def normalize_tool(payload, *, name="synthetic-tool", source="synthetic"):
         {
             "timestamp": "2026-08-08T00:00:03Z",
             "type": "response_item",
-            "payload": {"type": "function_call", "name": name, **payload},
+            "payload": {"type": "function_call", "name": name, "call_id": "synthetic-call", **payload},
             "id": "synthetic-tool-event",
         },
         {
@@ -47,6 +47,11 @@ def normalize_tool(payload, *, name="synthetic-tool", source="synthetic"):
             },
         },
     ]
+    records.insert(-1, {
+        "timestamp": "2026-08-08T00:00:03.500Z", "type": "response_item",
+        "id": "synthetic-result-event", "payload": {
+            "type": "function_call_output", "call_id": "synthetic-call", "output": '{"exit_code":0}'},
+    })
     document = build_session_document(
         source=source,
         locator="synthetic/rollout.jsonl",
@@ -79,8 +84,13 @@ def normalize_tools(payloads, *, source="synthetic"):
         records.append({
             "timestamp": f"2026-08-08T00:00:{3 + index:02d}Z",
             "type": "response_item",
-            "payload": {"type": "function_call", "name": name, **payload},
+            "payload": {"type": "function_call", "name": name, "call_id": f"synthetic-call-{index}", **payload},
             "id": f"synthetic-tool-event-{index}",
+        })
+        records.append({
+            "timestamp": f"2026-08-08T00:00:{3 + index:02d}.500Z", "type": "response_item",
+            "id": f"synthetic-result-event-{index}", "payload": {
+                "type": "function_call_output", "call_id": f"synthetic-call-{index}", "output": '{"exit_code":0}'},
         })
     records.append({
         "timestamp": "2026-08-08T00:10:00Z",
@@ -136,14 +146,14 @@ class ResponseContainerPipelineTest(unittest.TestCase):
             },
             name="unrelated-tool",
         )
-        self.assertEqual(["./scripts/test.sh: passed"], evidence["verifications"])
+        self.assertEqual(["./scripts/test.sh: unknown"], evidence["verifications"])
 
     def test_js_source_with_escaped_newlines_extracts_commands(self):
         evidence = self.evidence(
             {"input": r'const r = await tools.exec_command({cmd:"./scripts/check.sh"});\nconst done = true;'},
             name="unrelated-tool",
         )
-        self.assertEqual(["./scripts/check.sh: passed"], evidence["verifications"])
+        self.assertEqual(["./scripts/check.sh: unknown"], evidence["verifications"])
 
     def test_js_source_with_real_and_escaped_newlines_extracts_both_commands(self):
         value = (
@@ -151,8 +161,8 @@ class ResponseContainerPipelineTest(unittest.TestCase):
             'const s = await tools.exec_command({\n  cmd: "pytest -q"\n});'
         )
         evidence = self.evidence({"input": value}, name="unrelated-tool")
-        self.assertEqual(["printf 'first second': passed"], evidence["tool_calls"])
-        self.assertEqual(["pytest -q: passed"], evidence["verifications"])
+        self.assertEqual(["printf 'first second': unknown"], evidence["tool_calls"])
+        self.assertEqual(["pytest -q: unknown"], evidence["verifications"])
 
     def test_acceptance_raw_patch_with_real_newlines_extracts_both_paths(self):
         patch = "*** Begin Patch\n*** Update File: a.py\n*** Update File: b.py\n*** End Patch\n"
@@ -175,8 +185,8 @@ class ResponseContainerPipelineTest(unittest.TestCase):
             r'const r = await tools.exec_command({cmd:"./scripts/test.sh"});'
         )
         evidence = self.evidence({"input": value}, name="unrelated-tool")
-        self.assertEqual(["added.py"], evidence["changed_targets"])
-        self.assertEqual(["./scripts/test.sh: passed"], evidence["verifications"])
+        self.assertEqual(["added.py"], evidence["other_targets"])
+        self.assertEqual(["./scripts/test.sh: unknown"], evidence["verifications"])
         self.assertEqual([], evidence["tool_calls"])
 
     def test_acceptance_arguments_dict_with_nested_patch_is_structured_evidence(self):
@@ -237,9 +247,9 @@ class ResponseContainerPipelineTest(unittest.TestCase):
             for index in range(1, 10)
         )
         evidence = self.evidence({"input": patch}, name="unrelated-tool")
-        self.assertEqual(paths[:8], evidence["changed_targets"])
+        self.assertEqual(paths[:8], evidence["other_targets"])
         self.assertEqual(
-            [f"./scripts/check-{index}.sh: passed" for index in range(1, 9)],
+            [f"./scripts/check-{index}.sh: unknown" for index in range(1, 9)],
             evidence["verifications"],
         )
         self.assertEqual(2, evidence["omitted_count"])
@@ -362,7 +372,8 @@ class ResponseContainerPipelineTest(unittest.TestCase):
                 "user_interrupts": [],
                 "omitted_count": 0,
                 "source_refs": [
-                    "synthetic://synthetic-thread/turn/synthetic-turn/event/synthetic-tool-event"
+                    "synthetic://synthetic-thread/turn/synthetic-turn/event/synthetic-tool-event",
+                    "synthetic://synthetic-thread/turn/synthetic-turn/event/synthetic-result-event"
                 ],
             },
             evidence,

@@ -107,6 +107,8 @@ DChat Service 负责最多三路会话读取，同一会话的窗口拆分保持
 
 Sessions checkpoint 的 `cache_generation` 由来源 Adapter revision、shared extraction revision 和 Slice Schema 共同决定。来源特有解析变化只提升对应 Adapter revision，共享提取或判断语义变化提升 shared extraction revision。
 
+Sessions 的工具状态由 `tool_results` 统一判定，适配器在同一 Turn 内按调用 ID 关联返回结果。工具记录只保存源文件相对位置、字节范围和内容哈希；`evidence` 负责 `sessions show --evidence-ref` 的来源目录检查、记录哈希核验与分页回读。原文留在来源文件，引用随 Slice revision 保存；来源变化或缺失时回读失败，由调用方重新采集或保留证据缺口。
+
 Pi Adapter 读取 `~/.pi/agent/sessions` 的 v2/v3 树形 JSONL，以原生 user message ID 作为 Turn 身份，通过 `parentId` 归并真实分支事件；compaction、branch summary、扩展注入和 thinking 不进入正文。它与 Codex、Claude、SmartWork、DeepSeek 共用同一 Slice、checkpoint 与清洗接口，不建立 Pi 专用存储。
 
 ## 安全属性

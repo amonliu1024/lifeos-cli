@@ -108,7 +108,7 @@ class AbortSemanticsTest(unittest.TestCase):
             "mutation",
             [
                 _record("mutation", "user_message", 1, text="写入"),
-                _record("mutation", "exec_command", 2, arguments={"cmd": "cat file && touch output"}),
+                _record("mutation", "exec_command_end", 2, exit_code=0, arguments={"cmd": "cat file && touch output"}),
                 _record("mutation", "turn_aborted", 3),
             ],
         )
@@ -124,7 +124,7 @@ class AbortSemanticsTest(unittest.TestCase):
                 label,
                 [
                     _record(label, "user_message", 1, text="继续处理"),
-                    _record(label, "exec_command", 2, arguments={"cmd": command}),
+                    _record(label, "exec_command_end", 2, exit_code=0, arguments={"cmd": command}),
                     _record(label, "turn_aborted", 3),
                 ],
             )
@@ -135,7 +135,7 @@ class AbortSemanticsTest(unittest.TestCase):
             "verification",
             [
                 _record("verification", "user_message", 1, text="检查"),
-                _record("verification", "exec_command", 2, arguments={"cmd": "pytest tests"}),
+                _record("verification", "exec_command_end", 2, exit_code=0, arguments={"cmd": "pytest tests"}),
                 _record("verification", "turn_aborted", 3),
             ],
         )

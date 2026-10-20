@@ -9,6 +9,7 @@ from unittest import mock
 
 from lifeos_sessions.core import (
     AdapterResult,
+    SHARED_EXTRACTION_REVISION,
     ConversationSlice,
     SessionValidationError,
     SessionsService,
@@ -63,7 +64,7 @@ class CoreContractTest(unittest.TestCase):
         self.assertNotEqual(baseline, adapter_cache_generation("codex", "2"))
         self.assertNotEqual(
             baseline,
-            adapter_cache_generation("codex", "1", shared_revision=2),
+            adapter_cache_generation("codex", "1", shared_revision=SHARED_EXTRACTION_REVISION + 1),
         )
         self.assertNotEqual(
             baseline,

@@ -10,6 +10,7 @@ from typing import Any, Dict, Iterable, List
 
 from .core import SessionError, SessionsService, TimeWindow, canonical_json
 from .activity_ids import ACTIVITY_ID
+from .evidence import read_evidence
 from .pack import (
     DEFAULT_INDEX_MAX_BYTES,
     DEFAULT_MAX_BYTES,
@@ -27,6 +28,7 @@ from .retention import CONFIG_NAME as RETENTION_CONFIG, RetentionPolicy
 from .store import SessionNotFound, SessionsStore, StoreError
 from .adapters import (
     SESSION_SOURCE_NAMES,
+    source_root,
     build_adapters,
     resolve_selected_sources,
 )
@@ -230,6 +232,19 @@ def command_list(args: Any) -> None:
 def command_show(args: Any) -> None:
     try:
         item = SessionsStore(args.sessions_root).show(args.slice_id, args.revision)
+        if args.evidence_ref:
+            _sources([item["source"]])
+            page = read_evidence(item, args.evidence_ref, source_root(item["source"]),
+                                 offset=args.offset, limit=args.limit)
+            if args.json:
+                _json(page)
+            else:
+                print(page["text"])
+                if page["next_offset"] is not None:
+                    print(f"[truncated; next offset: {page['next_offset']}]")
+            return
+        if args.offset != 0 or args.limit != 8000:
+            raise SessionError("--offset/--limit require --evidence-ref")
     except (FileNotFoundError, SessionNotFound, SessionError, StoreError, ValueError) as exc:
         _fail(str(exc), 1)
     if args.json:
@@ -679,7 +694,8 @@ def register_sessions_parser(domains: Any, data_dir: Path) -> None:
         "show",
         help="只读查看一个 Slice（单个 Agent Turn）的当前或历史 revision",
         description=(
-            "从私有派生存储读取指定 ConversationSlice，不回源。默认显示当前 revision；"
+            "默认从私有派生存储读取指定 ConversationSlice。--evidence-ref 按保存的引用回源核对原文；"
+            "默认显示当前 revision；"
             "--revision 可回读不可变历史版本；默认文本展示正文块与执行证据，--json 返回"
             "包含生命周期字段的完整 Slice。"
         ),
@@ -687,6 +703,9 @@ def register_sessions_parser(domains: Any, data_dir: Path) -> None:
     command.add_argument("slice_id", metavar="SLICE-ID", help="Slice 稳定 ID")
     command.add_argument("--revision", metavar="REVISION", help="指定不可变 revision；省略时读取当前版本")
     command.add_argument("--json", action="store_true", help="输出完整 Slice JSON")
+    command.add_argument("--evidence-ref", help="精确回读此 Slice 保存的工具记录引用；核对原始记录哈希")
+    command.add_argument("--offset", type=int, default=0, help="原始记录格式化文本的起始字符（默认 0）")
+    command.add_argument("--limit", type=int, default=8000, help="回读字符数（1..32000，默认 8000）")
     command.set_defaults(handler=command_show)
 
     command = commands.add_parser(

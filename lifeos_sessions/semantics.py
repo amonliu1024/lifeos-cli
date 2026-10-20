@@ -523,7 +523,8 @@ def has_substantive_result(
 
     if any(str(value).strip() for value in evidence.get("changed_targets") or []):
         return True
-    if any(str(value).strip() for value in evidence.get("verifications") or []):
+    if any(str(value).strip() and not str(value).endswith((": pending", ": unknown"))
+           for value in evidence.get("verifications") or []):
         return True
     if any(str(value).strip() for value in evidence.get("failures") or []):
         return True

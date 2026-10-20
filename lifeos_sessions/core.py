@@ -22,7 +22,7 @@ UTC = timezone.utc
 SCHEMA_VERSION = 1
 # Shared extraction and judgment changes invalidate every source checkpoint.
 # Source-specific parser changes continue to use each adapter's own revision.
-SHARED_EXTRACTION_REVISION = 1
+SHARED_EXTRACTION_REVISION = 2
 # What a slice may claim about itself.  These names describe what the value
 # proves, not where it came from; see ``semantics`` for the classification
 # rules the adapters apply when producing them.

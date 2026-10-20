@@ -92,6 +92,8 @@ Work 的当前事实只有三类：按天记下的每一笔（`entries.json`）�
 
 Sessions、Git、DChat 和 Calendar 四类证据全部只读来源、只写私有快照，既不改动来源，也不写入 Work。Sessions 适配器只读来源文件；Git 证据只读取显式注册的本地检出，不联系远端；DChat 群聊只在当前有效 `lifeos-project.json` 的 `sources.dchat.groups` 中声明时读取正文。Calendar 只读日程并保存私有快照，参会情况由本人确认。各来源的采集窗口、索引和 JSON 输出以 `lifeos sessions/git/dchat/calendar --help` 为准。
 
+会话摘要会区分工具的成功、失败、中断和待返回状态。需要核对完整工具输出时，先用 `lifeos sessions show <slice-id> --json` 取得 `source_meta.evidence_records`，再用 `lifeos sessions show <slice-id> --evidence-ref <ref> --json` 精确回读；长记录按返回的 `next_offset` 配合 `--offset` 继续读取。来源文件已修改或旧 Slice 没有引用时，需要重新扫描对应窗口。
+
 `lifeos dchat scan` 最多同时读取三个会话；扫描进度输出到 stderr，包含完成数、失败与部分缺失数、总耗时和正在读取的会话耗时。`--json` 的 stdout 仍只返回最终扫描结果。
 
 ## 日报与周期报

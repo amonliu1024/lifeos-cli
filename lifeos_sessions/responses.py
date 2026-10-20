@@ -24,6 +24,7 @@ from .core import (
     stable_omission_id,
     stable_slice_id,
 )
+from .tool_results import call_id, is_result, paired_status, failure_text
 from .semantics import (
     build_execution_evidence,
     classify_origin,
@@ -1062,65 +1063,61 @@ def _tool_summary(records: Sequence[_Record], warnings: List[str]) -> Dict[str, 
     failures: List[str] = []
     successful_commands: List[str] = []
     omitted = 0
-    for record in records:
-        if record.kind != "tool":
-            continue
+    tool_records = [record for record in records if record.kind == "tool" and not record.explicit_abort]
+    results: Dict[str, List[Mapping[str, Any]]] = {}
+    call_ids = {call_id(r.payload) for r in tool_records if not is_result(r.payload)} - {""}
+    for record in tool_records:
+        if is_result(record.payload) and call_id(record.payload):
+            results.setdefault(call_id(record.payload), []).append(record.payload)
+    for record in tool_records:
         payload = record.payload
-        structured_changed, structured_other, structured_omitted = _extract_structured_paths(
-            {
-                key: value
-                for key, value in payload.items()
-                if key not in {"input", "arguments", "params", "name"}
-            }
-        )
-        changed.extend(structured_changed)
-        other.extend(structured_other)
-        omitted += structured_omitted
-        status = str(_first(payload, "status", "result", "outcome", "state") or "").lower()
-        exit_code = _first(payload, "exit_code", "exitCode", "returncode", "code")
-        event_type = str(payload.get("type", "")).lower()
-        failed = status in {"failed", "failure", "error", "errored", "rejected", "timeout", "timed_out"}
-        if exit_code not in (None, "", 0, "0") or event_type == "error":
-            failed = True
-        # Codex reports patch application through ``success`` rather than a
-        # status string or an exit code.
-        if payload.get("success") is False:
-            failed = True
-        check_name = _first(payload, "check", "check_name", "name", "description", "test")
-        container = _normalize_container(payload)
-        extracted_commands, command_omitted, extracted_malformed = _extract_commands(container)
-        patch_targets, other_targets, patch_omitted = _extract_paths(container)
-        changed.extend(patch_targets)
-        other.extend(other_targets)
-        omitted += command_omitted + patch_omitted + extracted_malformed
-        command = extracted_commands[0] if extracted_commands else ""
-        if failed:
-            error = _first(payload, "error", "failure", "reason", "message")
-            description = _error_text(error)
-            if not description:
-                description = command
-                if description and exit_code not in (None, ""):
-                    description = f"{description} (exit {exit_code})"
-            failures.append(description or event_type or clean_text(check_name) or "tool failure")
-        elif event_type == "turn_aborted":
-            # Lifecycle is carried separately; the marker itself is neither a
-            # tool call nor substantive execution evidence.
+        identity = call_id(payload)
+        if is_result(payload) and identity in call_ids:
             continue
-        elif not (event_type.endswith("_output") and not check_name):
-            # A ``*_output`` record is the result half of a call already
-            # counted above.  Emitting it again would spend the per-slice
-            # budget twice on one action and label it with a record type.
-            if extracted_commands:
-                checks.extend((f"{value}: passed", True) for value in extracted_commands)
-                successful_commands.extend(f"{value}: passed" for value in extracted_commands)
-                if extracted_malformed:
-                    checks.append((f"{clean_text(check_name) or event_type or 'tool'}: passed", False))
+        matched = results.get(identity, []) if not is_result(payload) else []
+        state = paired_status(payload, matched)
+        check_name = _first(payload, "check", "check_name", "name", "description", "test")
+        event_type = str(payload.get("type", "")).lower()
+        container = _normalize_container(payload)
+        commands, command_omitted, malformed = _extract_commands(container)
+        patch_targets, other_targets, patch_omitted = _extract_paths(container)
+        # A successful JS orchestration call does not prove that every nested
+        # command succeeded, or that a patch literal was actually applied.
+        if state == "passed" and container is not None and container.encoding == "js-source":
+            state = "unknown"
+        other.extend(other_targets)
+        omitted += command_omitted + patch_omitted + malformed
+        if state == "passed":
+            changed.extend(patch_targets)
+        else:
+            other.extend(patch_targets)
+        for observation in [payload, *matched]:
+            targets, read_targets, count = _extract_structured_paths({
+                key: value for key, value in observation.items()
+                if key not in {"input", "arguments", "params", "name"}
+            })
+            (changed if state == "passed" else other).extend(targets)
+            other.extend(read_targets)
+            omitted += count
+        labels = commands or [clean_text(check_name) or event_type or "tool"]
+        checks.extend((f"{label[:_MAX_COMMAND_LENGTH]}: {state}", bool(commands)) for label in labels)
+        if commands and malformed:
+            checks.append((f"{clean_text(check_name) or event_type or 'tool'}: {state}", False))
+        if state == "passed":
+            successful_commands.extend(f"{command}: passed" for command in commands)
+        if state in {"failed", "interrupted"}:
+            if matched:
+                detail = next((failure_text(result) for result in matched
+                               if paired_status(result, []) in {"failed", "interrupted"}), failure_text(payload))
+                failures.append(f"{labels[0]}: {state}: {detail}")
             else:
-                name = clean_text(check_name) or event_type or "tool"
-                label = command or name
-                checks.append((f"{label}: passed", bool(command)))
-                if command:
-                    successful_commands.append(f"{label}: passed")
+                description = _error_text(_first(payload, "error", "failure", "reason", "message"))
+                if not description and commands:
+                    description = commands[0]
+                    code = _first(payload, "exit_code", "exitCode", "returncode")
+                    if code is not None:
+                        description += f" (exit {code})"
+                failures.append(description or event_type or labels[0])
     changed_values, changed_omitted = _bound(changed, warnings, "changed_targets")
     other_values, other_omitted = _bound(other, warnings, "other_targets")
     # ``_bound`` keeps the first N entries, so an ordinary tool call can push a
@@ -1131,7 +1128,7 @@ def _tool_summary(records: Sequence[_Record], warnings: List[str]) -> Dict[str, 
         (value for value, _command in checks),
         warnings,
         "checks",
-        _MAX_COMMAND_LENGTH + len(": passed"),
+        _MAX_COMMAND_LENGTH + len(": interrupted"),
     )
     failure_values, failure_omitted = _bound(
         failures, warnings, "failures", _MAX_COMMAND_LENGTH + 32
@@ -1209,7 +1206,7 @@ def normalize_sessions(
             kind, role, text, final = _classify(raw, current_payload, profile)
             explicit_abort, abort_reason = _explicit_abort(current_payload, raw)
             event_id = _event_id(raw, current_payload)
-            record_hash = _sha(raw)
+            record_hash = _sha({key: value for key, value in raw.items() if key != "_evidence_record"})
             if current_turn is None and kind in {"user", "agent", "tool"}:
                 current_turn = f"turn-{event_id or record_hash[:24]}"
             turn_id = current_turn or f"event-{record_hash[:24]}"
@@ -1520,6 +1517,10 @@ def normalize_sessions(
                 "parent_turn_id",
             }:
                 item_source_meta[key] = value
+        item_source_meta["evidence_records"] = [
+            {**record.raw["_evidence_record"], "ref": _source_ref(profile, record, thread_id, turn_id)}
+            for record in records if record.kind == "tool" and isinstance(record.raw.get("_evidence_record"), Mapping)
+        ]
         item: Dict[str, Any] = {
             "schema_version": SCHEMA_VERSION,
             "slice_id": stable_slice_id(profile.name, conversation_id, "turn", turn_id),

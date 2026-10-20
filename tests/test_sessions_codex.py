@@ -105,14 +105,14 @@ class CodexAdapterTest(unittest.TestCase):
         item = next(as_dict(value) for value in result.slices if as_dict(value)["native_unit"]["id"] == "turn-command")
         evidence = item["execution_evidence"]
         self.assertEqual("验证证据整理", item["conversation"]["title"])
-        self.assertIn('/bin/zsh -lc cd /x && python3 -m unittest discover: passed', evidence["verifications"])
-        self.assertIn("npm test: passed", evidence["verifications"])
+        self.assertIn('/bin/zsh -lc cd /x && python3 -m unittest discover: pending', evidence["verifications"])
+        self.assertIn("npm test: pending", evidence["verifications"])
         ruff = next(value for value in evidence["verifications"] if value.startswith("ruff check "))
-        self.assertEqual(208, len(ruff))
-        self.assertTrue(ruff.endswith(": passed"))
-        self.assertIn("git status: passed", evidence["tool_calls"])
+        self.assertEqual(209, len(ruff))
+        self.assertTrue(ruff.endswith(": pending"))
+        self.assertIn("git status: pending", evidence["tool_calls"])
         self.assertIn("exec_command_end: passed", evidence["tool_calls"])
-        self.assertNotIn("git status: passed", evidence["verifications"])
+        self.assertNotIn("git status: pending", evidence["verifications"])
 
     def test_exec_string_input_extracts_all_commands_and_routes_them_to_semantics(self):
         write_jsonl(
@@ -143,14 +143,14 @@ class CodexAdapterTest(unittest.TestCase):
         evidence = item["execution_evidence"]
         self.assertEqual(
             [
-                "./scripts/test.sh: passed",
-                "groovy scripts/local/verify-x.groovy: passed",
-                "python3 scripts/test_cases.py: passed",
+                "./scripts/test.sh: pending",
+                "groovy scripts/local/verify-x.groovy: pending",
+                "python3 scripts/test_cases.py: pending",
             ],
             evidence["verifications"],
         )
         self.assertEqual([], evidence["tool_calls"])
-        self.assertNotIn("exec: passed", evidence["tool_calls"])
+        self.assertNotIn("exec: pending", evidence["tool_calls"])
 
     def test_exec_string_input_caps_one_fragment_at_eight_and_counts_the_rest(self):
         commands = [r'./scripts/check-0.sh --label \"quoted\"'] + [
@@ -173,7 +173,7 @@ class CodexAdapterTest(unittest.TestCase):
         item = next(as_dict(value) for value in result.slices if as_dict(value)["native_unit"]["id"] == "turn-string-limit")
         evidence = item["execution_evidence"]
         expected_commands = [commands[0].replace(r'\"', '"')] + commands[1:8]
-        self.assertEqual([f"{command}: passed" for command in expected_commands], evidence["verifications"])
+        self.assertEqual([f"{command}: pending" for command in expected_commands], evidence["verifications"])
         self.assertEqual(1, evidence["omitted_count"])
 
     def test_exec_string_input_without_a_complete_command_keeps_the_bare_tool_fallback(self):
@@ -191,7 +191,7 @@ class CodexAdapterTest(unittest.TestCase):
         result = self.scan(from_time="2026-08-08T05:21:00Z", to_time="2026-08-08T05:23:00Z")
         item = next(as_dict(value) for value in result.slices if as_dict(value)["native_unit"]["id"] == "turn-string-invalid")
         evidence = item["execution_evidence"]
-        self.assertEqual(["exec: passed"], evidence["tool_calls"])
+        self.assertEqual(["exec: pending"], evidence["tool_calls"])
         self.assertEqual([], evidence["verifications"])
 
     def test_exec_string_input_keeps_a_bare_fallback_for_each_malformed_occurrence(self):
@@ -208,8 +208,8 @@ class CodexAdapterTest(unittest.TestCase):
         result = self.scan(from_time="2026-08-08T05:27:00Z", to_time="2026-08-08T05:29:00Z")
         item = next(as_dict(value) for value in result.slices if as_dict(value)["native_unit"]["id"] == "turn-string-mixed")
         evidence = item["execution_evidence"]
-        self.assertEqual(["./scripts/test.sh: passed"], evidence["verifications"])
-        self.assertEqual(["exec: passed"], evidence["tool_calls"])
+        self.assertEqual(["./scripts/test.sh: pending"], evidence["verifications"])
+        self.assertEqual(["exec: pending"], evidence["tool_calls"])
 
     def test_exec_string_input_extracts_patch_update_paths_in_order(self):
         patch_input = (
@@ -233,7 +233,7 @@ class CodexAdapterTest(unittest.TestCase):
         item = next(as_dict(value) for value in result.slices if as_dict(value)["native_unit"]["id"] == "turn-string-patch-paths")
         self.assertEqual(
             ["/synthetic/first.py", "/synthetic/second.py"],
-            item["execution_evidence"]["changed_targets"],
+            item["execution_evidence"]["other_targets"],
         )
 
     def test_exec_string_input_keeps_patch_paths_and_commands_from_the_same_fragment(self):
@@ -256,8 +256,8 @@ class CodexAdapterTest(unittest.TestCase):
         result = self.scan(from_time="2026-08-08T05:31:00Z", to_time="2026-08-08T05:33:00Z")
         item = next(as_dict(value) for value in result.slices if as_dict(value)["native_unit"]["id"] == "turn-string-patch-mixed")
         evidence = item["execution_evidence"]
-        self.assertEqual(["/synthetic/added.py"], evidence["changed_targets"])
-        self.assertEqual(["./scripts/test.sh: passed"], evidence["verifications"])
+        self.assertEqual(["/synthetic/added.py"], evidence["other_targets"])
+        self.assertEqual(["./scripts/test.sh: pending"], evidence["verifications"])
         self.assertEqual([], evidence["tool_calls"])
 
     def test_exec_string_input_ignores_patch_without_file_paths_or_with_empty_path(self):
@@ -277,9 +277,9 @@ class CodexAdapterTest(unittest.TestCase):
         result = self.scan(from_time="2026-08-08T05:33:00Z", to_time="2026-08-08T05:35:00Z")
         item = next(as_dict(value) for value in result.slices if as_dict(value)["native_unit"]["id"] == "turn-string-patch-invalid")
         evidence = item["execution_evidence"]
-        self.assertEqual([], evidence["changed_targets"])
-        self.assertNotIn("", evidence["changed_targets"])
-        self.assertEqual(["exec: passed"], evidence["tool_calls"])
+        self.assertEqual([], evidence["other_targets"])
+        self.assertNotIn("", evidence["other_targets"])
+        self.assertEqual(["exec: pending"], evidence["tool_calls"])
 
     def test_exec_string_input_caps_patch_paths_at_eight_and_counts_only_the_ninth(self):
         paths = [f"/synthetic/file-{index}.py" for index in range(1, 10)]
@@ -301,10 +301,10 @@ class CodexAdapterTest(unittest.TestCase):
         result = self.scan(from_time="2026-08-08T05:35:00Z", to_time="2026-08-08T05:37:00Z")
         item = next(as_dict(value) for value in result.slices if as_dict(value)["native_unit"]["id"] == "turn-string-patch-limit")
         evidence = item["execution_evidence"]
-        self.assertEqual(paths[:8], evidence["changed_targets"])
+        self.assertEqual(paths[:8], evidence["other_targets"])
         self.assertEqual(1, evidence["omitted_count"])
 
-    def test_exec_string_input_with_only_cmd_keeps_the_previous_evidence_bytes(self):
+    def test_exec_string_input_without_result_keeps_pending_evidence(self):
         cmd_only_input = r'const r = await tools.exec_command({cmd:"./scripts/test.sh"});'
         write_jsonl(
             self.root / "sessions" / "2026" / "08" / "08" / "rollout-string-cmd-only.jsonl",
@@ -319,7 +319,7 @@ class CodexAdapterTest(unittest.TestCase):
         result = self.scan(from_time="2026-08-08T05:37:00Z", to_time="2026-08-08T05:39:00Z")
         item = next(as_dict(value) for value in result.slices if as_dict(value)["native_unit"]["id"] == "turn-string-cmd-only")
         self.assertEqual(
-            '{"changed_targets":[],"other_targets":[],"tool_calls":[],"verifications":["./scripts/test.sh: passed"],"failures":[],"user_interrupts":[],"omitted_count":0,"source_refs":["codex://thread-string-cmd-only/turn/turn-string-cmd-only/event/string-cmd-only-call"]}',
+            '{"changed_targets":[],"other_targets":[],"tool_calls":[],"verifications":["./scripts/test.sh: pending"],"failures":[],"user_interrupts":[],"omitted_count":0,"source_refs":["codex://thread-string-cmd-only/turn/turn-string-cmd-only/event/string-cmd-only-call"]}',
             json.dumps(item["execution_evidence"], ensure_ascii=False, separators=(",", ":")),
         )
 

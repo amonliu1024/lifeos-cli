@@ -19,6 +19,7 @@ from dataclasses import dataclass
 from pathlib import Path
 from typing import Any, Dict, List, Mapping, Optional, Tuple
 
+from .evidence import record_locator
 from .core import AdapterResult, adapter_cache_generation
 from .responses import (
     SourceProfile,
@@ -117,14 +118,17 @@ def _read_records(path: Path) -> Tuple[List[Mapping[str, Any]], bool]:
     records: List[Mapping[str, Any]] = []
     incomplete_tail = False
     malformed = False
-    for line in raw.splitlines():
+    position = 0
+    for line in raw.splitlines(keepends=True):
+        start = position
+        position += len(line)
         stripped = line.strip()
         if not stripped:
             continue
         try:
             decoded = json.loads(stripped.decode("utf-8"))
         except (UnicodeDecodeError, json.JSONDecodeError):
-            if line is raw.splitlines()[-1]:
+            if position == len(raw):
                 incomplete_tail = True
             else:
                 malformed = True
@@ -132,7 +136,7 @@ def _read_records(path: Path) -> Tuple[List[Mapping[str, Any]], bool]:
         if not isinstance(decoded, Mapping):
             malformed = True
             continue
-        records.append(decoded)
+        records.append({**decoded, "_evidence_record": record_locator("", line, start)})
     if malformed or incomplete_tail:
         if not records:
             malformed = True
@@ -222,6 +226,8 @@ def _project_record(record: Mapping[str, Any]) -> Optional[Mapping[str, Any]]:
                 payload_out["input"] = _canonical_json(arguments)
             if message.get("id") is not None:
                 payload_out["id"] = message["id"]
+                if outer_type == "tool/call":
+                    payload_out.setdefault("call_id", message["id"])
             if isinstance(message.get("source"), Mapping) and message["source"].get("callId") is not None:
                 payload_out["call_id"] = message["source"]["callId"]
             if "callId" in payload:
@@ -243,10 +249,10 @@ def _project_record(record: Mapping[str, Any]) -> Optional[Mapping[str, Any]]:
                         for part in block.get("content") or []:
                             if isinstance(part, Mapping) and part.get("type") == "text":
                                 texts.append(clean_text(part.get("text")))
-                    if failed:
-                        payload_out["status"] = "failed"
+                    payload_out["isError"] = failed
                     if texts:
                         payload_out["message"] = "\n".join(texts)
+                        payload_out["output"] = [{"type": "text", "text": text} for text in texts]
         return {"timestamp": timestamp, "type": "response_item", "payload": payload_out}
     if outer_type in {"turn/start", "turn/end"}:
         payload_out = {"type": "turn_context", "turn_id": turn}
@@ -325,7 +331,9 @@ class DeepseekAdapter:
             projected_record = _project_record(record)
             if projected_record is None:
                 continue
-            projected.append(projected_record)
+            source_record = dict(record.get("_evidence_record") or {})
+            source_record["locator"] = locator
+            projected.append({**projected_record, "_evidence_record": source_record})
         records = projected
         for record in records:
             last_hash = _sha(record)

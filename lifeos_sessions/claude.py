@@ -23,6 +23,7 @@ from datetime import datetime, timezone
 from pathlib import Path
 from typing import Any, Dict, Iterable, Iterator, List, Mapping, MutableMapping, Optional, Sequence, Tuple
 
+from .tool_results import paired_status, failure_text
 from .core import (
     SCHEMA_VERSION,
     AdapterResult,
@@ -1033,6 +1034,14 @@ class ClaudeAdapter:
                 "session_id": session_id,
                 "project": project,
                 "files": sorted({str(event.path) for event in events}),
+                "evidence_records": [
+                    {"ref": _source_ref(event), "locator": event.path.relative_to(self._projects_root()).as_posix(),
+                     "offset": event.offset_start, "length": event.offset_end - event.offset_start,
+                     "sha256": event.raw_hash}
+                    for event in events if any(
+                        isinstance(block, Mapping) and block.get("type") in {"tool_use", "tool_result"}
+                        for block in _content_blocks(event.data))
+                ],
                 "turn_duration_ms": duration_ms,
             },
             "adapter": {"name": ADAPTER_NAME, "version": ADAPTER_VERSION},
@@ -1658,72 +1667,59 @@ def _tool_observations(events: Sequence[_Event]) -> Tuple[Dict[str, Any], List[s
                    "run_terminal_cmd", "terminal"}
     delegation_tools = {"task", "agent", "delegate", "spawn", "subagent", "run_subagent"}
 
+    results: Dict[str, List[Mapping[str, Any]]] = {}
+    result_refs: Dict[str, List[str]] = {}
+    for event in events:
+        for block in _content_blocks(event.data):
+            if not isinstance(block, Mapping) or block.get("type") != "tool_result":
+                continue
+            identity = str(block.get("tool_use_id") or "")
+            if not identity:
+                omitted += 1
+                continue
+            envelope = dict(block)
+            envelope.setdefault("is_error", False)
+            details = event.data.get("toolUseResult")
+            if isinstance(details, Mapping):
+                envelope["details"] = details
+            results.setdefault(identity, []).append(envelope)
+            result_refs.setdefault(identity, []).append(_source_ref(event))
+    seen: set[str] = set()
     for event in events:
         if not _is_assistant_record(event.data):
             continue
         for block in _content_blocks(event.data):
-            if not isinstance(block, Mapping) or str(block.get("type") or "").lower() != "tool_use":
+            if not isinstance(block, Mapping) or block.get("type") != "tool_use":
                 continue
-            name = str(block.get("name") or block.get("function", {}).get("name") or "").strip()
+            name = str(block.get("name") or "tool").strip()
             lowered = name.lower()
-            input_data = block.get("input") if isinstance(block.get("input"), Mapping) else {}
+            identity = str(block.get("id") or "")
+            if identity:
+                seen.add(identity)
             if lowered in delegation_tools or lowered == "askuserquestion":
                 continue
-            extracted = False
-            if lowered in edit_tools:
-                values = _summary_values(input_data, ("changed_targets", "changed_files", "files", "paths", "file_path", "path", "file", "filename", "target"))
-                changed.extend(values)
-                extracted = bool(values)
-            if lowered in check_tools or any(token in lowered for token in check_tools):
-                checks.append(name or lowered)
-                extracted = True
-            elif lowered in shell_tools:
-                command = _shell_command(input_data)
-                # Keep the command in both evidence buckets.  The semantic
-                # owner decides whether it is a verification; the tool name
-                # is only a fallback when the container has no command.
-                checks.append(command or name or lowered)
+            input_data = block.get("input") if isinstance(block.get("input"), Mapping) else {}
+            matched = results.get(identity, []) if identity else []
+            state = paired_status(block, matched)
+            command = _shell_command(input_data) if lowered in shell_tools else ""
+            label = command or name
+            checks.append(f"{label}: {state}")
+            refs.extend([_source_ref(event), *result_refs.get(identity, [])])
+            if state == "passed":
                 if command:
                     successful_commands.append(f"{command}: passed")
-                extracted = True
-            # A structured tool input can explicitly carry summary fields even
-            # when its vendor-specific name is unknown.
-            explicit_changed = _summary_values(input_data, ("changed_targets", "changed_files"))
-            explicit_checks = _summary_values(input_data, ("checks", "check", "check_name", "tests"))
-            if explicit_changed:
-                changed.extend(explicit_changed)
-                extracted = True
-            if explicit_checks:
-                checks.extend(explicit_checks)
-                extracted = True
-            if extracted:
-                refs.append(_source_ref(event))
-            else:
-                omitted += 1
-
-    # Tool results are user records in Claude JSONL.  They may expose a
-    # structured status/changed-target payload even when the corresponding
-    # tool_use input did not.
-    for event in events:
-        if str(event.data.get("type") or "").lower() != "user":
-            continue
-        for block in _content_blocks(event.data):
-            if not isinstance(block, Mapping) or str(block.get("type") or "").lower() not in {"tool_result", "toolresult"}:
-                continue
-            value = block.get("content")
-            changed_values = _summary_values(value, ("changed_targets", "changed_files", "files", "paths", "file_path", "path", "file", "filename", "target"))
-            check_values = _summary_values(value, ("checks", "check", "check_name", "tests"))
-            status = str(_first_value_from_mapping(value, "status", "outcome", "state") if isinstance(value, Mapping) else "").lower()
-            exit_code = _first_value_from_mapping(value, "exit_code", "exitCode", "returncode") if isinstance(value, Mapping) else None
-            failed = status in {"failed", "failure", "error", "errored", "rejected", "timeout", "timed_out"} or exit_code not in (None, "", 0, "0")
-            failure_values = _summary_values(value, ("failure", "error", "reason")) if failed else []
-            changed.extend(changed_values)
-            checks.extend(check_values)
-            failures.extend(failure_values or (["tool failure"] if failed else []))
-            if changed_values or check_values or failure_values or failed:
-                refs.append(_source_ref(event))
-            else:
-                omitted += 1
+                if lowered in edit_tools:
+                    changed.extend(_summary_values(input_data, ("changed_targets", "changed_files", "files", "paths", "file_path", "path", "file", "filename", "target")))
+                changed.extend(_summary_values(input_data, ("changed_targets", "changed_files")))
+            if state in {"failed", "interrupted"}:
+                result = next((r for r in matched if paired_status(r, []) == state), matched[-1] if matched else block)
+                failures.append(f"{label}: {state}: {failure_text(result)}")
+    for identity, values in results.items():
+        if identity not in seen:
+            omitted += 1
+            if paired_status(values[-1], []) in {"failed", "interrupted"}:
+                failures.append(f"unmatched tool result {identity}: {failure_text(values[-1])}")
+                refs.extend(result_refs[identity])
 
     changed_values, changed_omitted = _bounded_summary_values(changed)
     check_values, check_omitted = _bounded_summary_values(checks)

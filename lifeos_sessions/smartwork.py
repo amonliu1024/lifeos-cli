@@ -10,6 +10,7 @@ from dataclasses import dataclass
 from pathlib import Path
 from typing import Any, Dict, List, Mapping, Optional, Sequence, Tuple
 
+from .evidence import record_locator
 from .core import AdapterResult, SourceScanRequest, adapter_cache_generation
 from .responses import (
     SourceProfile,
@@ -145,7 +146,7 @@ def _read_jsonl(path: Path, root: Path) -> _FileRead:
                 malformed = True
                 complete_offset = offset
                 continue
-            records.append(decoded)
+            records.append({**decoded, "_evidence_record": record_locator(locator, raw_line, start)})
             complete_offset = offset
             last_hash = _canonical_hash(decoded)
             timestamp_ms = parse_timestamp(decoded.get("timestamp"))
