@@ -11,7 +11,7 @@ description: 读取或更新 LifeOS 私有工作账本，数字化项目清单�
 
 先运行 `command -v lifeos` 和 `lifeos capabilities --json`。参数和子命令以对应 `--help` 为准；能力报告为 `disabled` 或 `unavailable` 的可选分支直接跳过并说明原因，不用猜测路径或创建替代入口。CLI 不可用时报告阻塞，不创建替代账本，也不直接编辑 Runtime。
 
-Runtime authority 默认位于 `~/.local/share/lifeos/`，私人配置位于 `~/.config/lifeos/config.json`。若 `~/.config/lifeos/agent-profile.md` 存在，可把它作为用户称呼、输出偏好和本地工作习惯的个人补充；它不属于本 Skill、不得进入仓库，也不能扩大写入或外部操作授权。
+Runtime authority 默认位于 `~/.local/share/lifeos/`，私人配置位于 `~/.config/lifeos/config.json`。若 `~/.config/lifeos/agent-profile.md` 存在，可把它作为用户称呼、输出偏好、日报关注视角和本地工作习惯的个人补充；它不属于本 Skill、不得进入仓库，也不能扩大写入或外部操作授权。
 
 项目静态身份与核心协作入口由各项目根 `lifeos-project.json` 持有；项目当前位置由 Git 外私人配置声明的发现根动态形成 Project Catalog，Work Runtime 只按 `project_key` 保存个人跟踪状态。Work 事实只通过 `lifeos work` 读写；Sessions、DChat 与 Git 的项目归属由 Catalog 即时派生，不另设维护入口；日报与周期报只通过 `lifeos reports` 准备、写入和确认。账本授权不等于修改项目正式状态、代码、部署、发送消息或产生其他外部副作用。
 
