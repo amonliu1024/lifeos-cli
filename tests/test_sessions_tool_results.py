@@ -15,6 +15,7 @@ from lifeos_sessions.pi import PiAdapter
 from lifeos_sessions.smartwork import SmartworkAdapter
 from lifeos_sessions.core import SessionError, SourceScanRequest, TimeWindow
 from lifeos_sessions.evidence import read_evidence
+from lifeos_sessions.tool_results import is_text_block, paired_status, result_status
 
 
 WINDOW = TimeWindow.from_values("2026-08-08T00:00:00Z", "2026-08-09T00:00:00Z")
@@ -328,3 +329,38 @@ class ToolResultEvidenceTest(unittest.TestCase):
         repeated = CodexAdapter(self.root).scan(SourceScanRequest(window=WINDOW))
         self.assertEqual(3, repeated.stats["records_deduplicated"])
         self.assertEqual(old_ids, [s["slice_id"] if isinstance(s, dict) else s.slice_id for s in repeated.slices])
+
+
+class NonStringTypeTest(unittest.TestCase):
+    """A decoded payload may carry a non-string ``type``; that must not abort a whole source."""
+
+    def test_decoded_json_with_list_type_inside_text_block(self):
+        payload = {
+            "type": "pi_tool_result",
+            "call_id": "call-1",
+            "name": "bash",
+            "status": "complete",
+            "output": [{"type": "text", "text": json.dumps({"type": ["Tipo", "Type", "类型"]})}],
+        }
+        self.assertEqual("passed", result_status(payload, returned=True))
+
+    def test_content_list_carrying_list_valued_type(self):
+        payload = {"type": "tool_result", "content": [{"type": ["text"], "text": "合成输出"}], "is_error": False}
+        self.assertEqual("passed", result_status(payload, returned=True))
+
+    def test_paired_status_survives_list_valued_type(self):
+        call = {"type": "tool_call", "call_id": "call-2", "name": "bash"}
+        result = {"type": "pi_tool_result", "call_id": "call-2", "output": [{"type": ["text"], "text": "{}"}]}
+        self.assertEqual("unknown", paired_status(call, [result]))
+
+    def test_text_block_detection_only_accepts_strings(self):
+        self.assertTrue(is_text_block({"type": "text"}))
+        self.assertTrue(is_text_block({"type": "output_text"}))
+        for value in ({"type": ["text"]}, {"type": None}, {}):
+            with self.subTest(value=value):
+                self.assertFalse(is_text_block(value))
+
+    def test_exit_code_and_pending_unchanged(self):
+        self.assertEqual("passed", result_status({"type": "tool_result", "exit_code": 0}, returned=True))
+        self.assertEqual("failed", result_status({"type": "tool_result", "exit_code": 1}, returned=True))
+        self.assertEqual("pending", result_status({"type": "bash_execution", "call_id": "call-3"}))

@@ -19,6 +19,12 @@ def is_result(payload: Mapping[str, Any]) -> bool:
     }
 
 
+def is_text_block(value: Mapping[str, Any]) -> bool:
+    """A text content block; any other shape of ``type`` is not one."""
+    kind = value.get("type")
+    return isinstance(kind, str) and kind in {"text", "output_text"}
+
+
 def result_status(payload: Mapping[str, Any], *, returned: bool = False) -> str:
     """A call alone is pending; output alone is not proof a shell exited."""
     values = []
@@ -36,12 +42,12 @@ def result_status(payload: Mapping[str, Any], *, returned: bool = False) -> str:
                 pending.append(decoded)
         elif isinstance(value, list):
             pending.extend(block for block in value if isinstance(block, Mapping)
-                           and block.get("type") in {"text", "output_text"})
+                           and is_text_block(block))
         elif isinstance(value, Mapping):
             values.append(value)
             pending.extend(value[key] for key in ("output", "content", "result", "details")
                            if key in value)
-            if value.get("type") in {"text", "output_text"}:
+            if is_text_block(value):
                 pending.append(value.get("text"))
     statuses = {str(v.get(k) or "").lower() for v in values
                 for k in ("status", "state", "outcome")}
