@@ -44,12 +44,19 @@ def _pi() -> Any:
     return PiAdapter()
 
 
+def _antigravity() -> Any:
+    from .antigravity import AntigravityAdapter
+
+    return AntigravityAdapter()
+
+
 SESSION_SOURCES = (
     SessionSource("codex", _codex, lambda: Path.home() / ".codex"),
     SessionSource("claude", _claude, lambda: Path.home() / ".claude" / "projects"),
     SessionSource("smartwork", _smartwork, lambda: Path.home() / ".SmartWork" / "sessions"),
     SessionSource("deepseek", _deepseek, lambda: Path.home() / ".dsh" / "sessions"),
     SessionSource("pi", _pi, lambda: Path.home() / ".pi" / "agent" / "sessions"),
+    SessionSource("antigravity", _antigravity, lambda: Path.home() / ".gemini" / "antigravity-cli"),
 )
 SESSION_SOURCE_NAMES = tuple(source.name for source in SESSION_SOURCES)
 _BY_NAME = {source.name: source for source in SESSION_SOURCES}

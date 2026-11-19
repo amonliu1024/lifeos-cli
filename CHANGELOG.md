@@ -13,6 +13,7 @@
 
 ### 新增
 
+- Sessions 新增 AntiGravity CLI 只读来源（`antigravity`），从本机 `~/.gemini/antigravity-cli` 采集请求、最终答复与有界执行证据；新安装默认启用，既有私有配置保持显式来源选择不变。
 - `lifeos work task-add --note "…"` 记下待办时一起写一句进展，这句进展也排进进展历史，不必记下后再补一次 `entry-update`。
 - `lifeos work entry-backfill ID --as-of YYYY-MM-DD --note "…"` 补记一版更早的进展：只追加一条带成立日期的审计事件，这一笔当前的进展、背景和更新时间都不变；Web 详情按成立日期把补记排进进展历史。
 
