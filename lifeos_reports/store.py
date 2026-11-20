@@ -843,3 +843,131 @@ def missing_days(rows: List[Dict[str, Any]], window_from: date, window_to: date)
             missing.append(cursor.isoformat())
         cursor += timedelta(days=1)
     return missing
+
+
+LEAKED_ID_RE = re.compile(
+    r"\b(?:ACT-[A-Z2-7]{24}|(?:TASK|NOTE|ASK|INS|EVT)-\d{4,}-\d+|"
+    r"GITSCAN-[A-Za-z0-9+_-]+|CALSCAN-[A-Za-z0-9+_-]+|CAL-[0-9a-f]{12})\b"
+)
+LEAKED_SHA_RE = re.compile(r"\b[0-9a-f]{40}\b")
+LEAKED_LOCAL_PATH_RE = re.compile(r"(?<![A-Za-z0-9_:])(?:/Users/|/home/)[^\s)>\]\"'`]+")
+LEGACY_CARRYOVER_HEADINGS = ("待办与依赖", "需要关注", "欠与等")
+RESERVED_H2_HEADINGS = frozenset({
+    "还做了",
+    "会议",
+    "想明白的",
+    "待办与依赖",
+    "需要关注",
+    "欠与等",
+    "当日概览",
+    "概览",
+})
+MAX_ELSE_ITEMS = 10
+MAX_CORE_THREADS = 3
+MAX_BODY_CHARS = 3500
+
+
+def lint_report_body(body: str) -> Dict[str, List[str]]:
+    """Run deterministic prose hygiene checks without changing historical validity rules."""
+
+    errors: List[str] = []
+    warnings: List[str] = []
+
+    leaked_ids = sorted(set(LEAKED_ID_RE.findall(body)))
+    if leaked_ids:
+        errors.append(f"正文不应出现内部 ID：{', '.join(leaked_ids[:5])}")
+
+    leaked_shas = sorted(set(LEAKED_SHA_RE.findall(body)))
+    if leaked_shas:
+        errors.append(f"正文不应出现完整 commit SHA：{', '.join(leaked_shas[:3])}")
+
+    leaked_paths = sorted(set(LEAKED_LOCAL_PATH_RE.findall(body)))
+    if leaked_paths:
+        errors.append(f"正文不应出现本机绝对路径：{', '.join(leaked_paths[:3])}")
+
+    in_fence = False
+    has_overview = False
+    current_h2: Optional[str] = None
+    else_items = 0
+    core_threads: List[str] = []
+    legacy_found: List[str] = []
+
+    for raw_line in body.splitlines():
+        stripped = raw_line.strip()
+        if stripped.startswith("```"):
+            in_fence = not in_fence
+            continue
+        if in_fence:
+            continue
+        if stripped.startswith("# ") and not stripped.startswith("## "):
+            title = stripped[2:].strip()
+            if title == "当日概览":
+                has_overview = True
+            current_h2 = None
+            continue
+        if stripped.startswith("## "):
+            heading = stripped[3:].strip()
+            current_h2 = heading
+            if heading in LEGACY_CARRYOVER_HEADINGS:
+                legacy_found.append(heading)
+            elif heading not in RESERVED_H2_HEADINGS:
+                core_threads.append(heading)
+            continue
+        if current_h2 == "还做了" and (stripped.startswith("- ") or stripped.startswith("* ")):
+            if len(stripped) > 2:
+                else_items += 1
+
+    if else_items > MAX_ELSE_ITEMS:
+        errors.append(f"「还做了」超过 {MAX_ELSE_ITEMS} 条（当前 {else_items} 条）")
+
+    if not has_overview:
+        warnings.append("缺少一级标题「# 当日概览」")
+    if legacy_found:
+        warnings.append(
+            f"包含已退出的跨日承接章节（{'、'.join(legacy_found)}），持续跟进建议转入 Work"
+        )
+    if len(core_threads) > MAX_CORE_THREADS:
+        warnings.append(f"核心主线超过 {MAX_CORE_THREADS} 条（当前 {len(core_threads)} 条）")
+    compact_chars = len(re.sub(r"\s+", "", body))
+    if compact_chars > MAX_BODY_CHARS:
+        warnings.append(f"正文偏长（当前 {compact_chars} 非空白字符，建议控制在 {MAX_BODY_CHARS} 以内）")
+
+    return {"errors": errors, "warnings": warnings}
+
+
+def previous_confirmed_report(reports_root: Path, before_day: date) -> Optional[Dict[str, Any]]:
+    """Return the latest confirmed daily report strictly before ``before_day``."""
+
+    rows = [
+        row
+        for row in list_reports(reports_root)
+        if not row.get("error") and date.fromisoformat(row["day"]) < before_day
+    ]
+    confirmed_rows = [row for row in rows if row.get("status") == "confirmed"]
+    if not confirmed_rows:
+        return None
+    latest = max(confirmed_rows, key=lambda row: row["day"])
+    prev_day = date.fromisoformat(latest["day"])
+    path = Path(latest["path"])
+    _meta, body = read_report(path)
+
+    gap_start = prev_day + timedelta(days=1)
+    between_rows = [
+        row
+        for row in rows
+        if gap_start <= date.fromisoformat(row["day"]) < before_day
+    ]
+    gap_missing = (
+        missing_days(between_rows, gap_start, before_day)
+        if gap_start < before_day
+        else []
+    )
+    gap_drafts = [row["day"] for row in between_rows if row.get("status") == "draft"]
+
+    return {
+        "day": latest["day"],
+        "path": str(path),
+        "body": body,
+        "gap_missing_days": gap_missing,
+        "gap_draft_days": gap_drafts,
+    }

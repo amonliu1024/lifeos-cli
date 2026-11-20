@@ -25,7 +25,8 @@ Runtime authority 默认位于 `~/.local/share/lifeos/`，私人配置位于 `~/
 | 查询工作账本、提醒、月初盘点、历史、洞见或实体关系 | 读取 [`references/work.md`](references/work.md)，进入 Work 读取分支 |
 | 明确记下或变更待办、随记、疑问、洞见及其他 Work 记录 | 读取 [`references/work.md`](references/work.md) 和 [`references/work-model.md`](references/work-model.md)，进入 Work 写入分支 |
 | 盘点工作区关注标记或处理 CURRENT 联动候选 | 读取 [`references/work.md`](references/work.md) 的「项目关注联动候选」一节，候选经本人确认后按 Work 写入分支执行 |
-| 生成、补写、重做、确认日报，或回答某个自然日做了什么 | 读取 [`references/daily.md`](references/daily.md)；读取会话正文或填写证据计数前，再读取 [`references/session-evidence.md`](references/session-evidence.md) |
+| 生成、补写、重做或确认日报 | 读取 [`references/daily.md`](references/daily.md) 和 [`references/daily-writing-guide.md`](references/daily-writing-guide.md)；深读会话或核对异常时再读取 [`references/session-evidence.md`](references/session-evidence.md) |
+| 只读回答某个自然日做了什么 | 读取 [`references/daily-readonly.md`](references/daily-readonly.md)，不触发草稿写入或确认 |
 | 生成、补写、重做、确认周报、月报、季度报、半年报或年报 | 读取 [`references/periodic.md`](references/periodic.md)，只消费对应周期内的 confirmed 日报 |
 
 请求同时包含多个分支时按依赖顺序执行：Project 先提供静态身份和入口并确认 Catalog 可发现；Work 再按 `project_key` 建立或维护个人跟踪；Daily 先形成候选，只有本人对具体候选另行授权后才进入 Work；Periodic 只在 Daily 已确认后消费其正文。确认项目清单、确认日报、确认周期报、确认“要做”和授权写入 Work 是不同动作，不互相推导。

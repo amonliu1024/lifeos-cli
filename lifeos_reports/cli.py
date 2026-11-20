@@ -14,8 +14,18 @@ import json
 import sys
 from datetime import date
 from pathlib import Path
-from typing import Any, Dict, List, Optional
+from typing import Any, Dict, List, Optional, Tuple
 
+from lifeos_calendar.store import CalendarStore, CalendarStoreError
+from lifeos_config.core import ConfigError
+from lifeos_projects.manifest import ProjectManifestError
+from lifeos_projects.registry import project_map_payload
+from lifeos_sessions.core import TimeWindow
+from lifeos_sessions.pack import build_activity_index
+from lifeos_sessions.projects import ProjectMap
+from lifeos_sessions.store import SessionsStore, StoreError as SessionsStoreError
+
+from . import prepare as prepare_module
 from . import store
 from .store import ReportError
 
@@ -152,13 +162,116 @@ def command_confirm(args: Any) -> None:
     )
 
 
+def _resolve_sessions_from_scan(
+    data_dir: Path,
+    day: date,
+    scan_id: str,
+) -> Tuple[List[str], int, int, int]:
+    sessions_root = data_dir / "sessions"
+    sessions_store = SessionsStore(sessions_root)
+    try:
+        errors = sessions_store.validate(scan_id)
+    except (OSError, SessionsStoreError, ValueError) as exc:
+        _fail(f"Sessions scan 校验失败：{exc}")
+    if errors:
+        _fail("Sessions scan 校验未通过：" + "；".join(errors[:3]))
+
+    window_from, window_to = store.day_window(day)
+    tw = TimeWindow.from_values(window_from.isoformat(), window_to.isoformat())
+    matching = [
+        item for item in sessions_store.list_scans(window=tw, limit=50)
+        if item.get("scan_id") == scan_id
+    ]
+    if not matching:
+        _fail(f"Sessions scan {scan_id} 不存在或窗口不是 {day.isoformat()}")
+    scan = matching[0]
+    if scan.get("status") not in {"complete", "partial"} or any(
+        src.get("status") == "failed" for src in (scan.get("sources") or [])
+    ):
+        _fail(f"Sessions scan {scan_id} 状态不可用于生成日报（{scan.get('status')}）")
+
+    try:
+        project_map = ProjectMap.from_dict(project_map_payload(data_dir))
+    except (ConfigError, ProjectManifestError, ValueError) as exc:
+        _fail(f"读取项目映射失败：{exc}")
+
+    try:
+        index_payload = build_activity_index(
+            sessions_store,
+            tw,
+            max_bytes=2_000_000,
+            project_map=project_map,
+        )
+    except (FileNotFoundError, SessionsStoreError, ValueError) as exc:
+        _fail(f"生成 Sessions index 失败：{exc}")
+
+    if index_payload.get("budget_exceeded") or index_payload.get("dropped_by_project"):
+        _fail("Sessions index 超出预算，无法完整吸纳全部 Activity ID")
+
+    activity_ids = [item["activity_id"] for item in index_payload.get("activities") or []]
+    coverage = index_payload.get("coverage_summary") or {}
+    cleaning = index_payload.get("cleaning_summary") or {}
+    return (
+        activity_ids,
+        int(coverage.get("partial") or 0),
+        int(cleaning.get("interrupted_with_result") or 0),
+        int(cleaning.get("explicit_abort_without_work") or 0),
+    )
+
+
+def _resolve_calendar_events_from_scan(
+    data_dir: Path,
+    day: date,
+    scan_id: str,
+) -> List[str]:
+    cal_store = CalendarStore(data_dir / "calendar")
+    try:
+        manifest = cal_store.read_scan(scan_id)
+    except CalendarStoreError as exc:
+        _fail(str(exc))
+    window_from, window_to = store.day_window(day)
+    expected_window = {"from": window_from.isoformat(), "to": window_to.isoformat()}
+    if manifest.get("window") != expected_window:
+        _fail(f"日历 scan {scan_id} 窗口与 {day.isoformat()} 不一致")
+    seen: set[str] = set()
+    event_ids: List[str] = []
+    for ref in manifest.get("event_refs") or []:
+        cid = ref.get("instance_id")
+        if cid and cid not in seen:
+            seen.add(cid)
+            event_ids.append(cid)
+    return event_ids
+
+
 def command_write(args: Any) -> None:
     reports_root: Path = args.reports_root
+    data_dir: Path = args.data_dir
     day: date = args.day
     path = store.report_path(reports_root, day)
     body = _read_body_file(args.body_file)
+
+    lint_result = store.lint_report_body(body)
+    if lint_result["errors"]:
+        _fail("正文卫生检查未通过：" + "；".join(lint_result["errors"]))
+
+    manual_sessions_count = any(
+        value is not None
+        for value in (args.sessions_partial, args.sessions_interrupted, args.sessions_omitted)
+    )
+    if args.sessions_scan_id:
+        if args.activity_ids or manual_sessions_count:
+            _fail("--sessions-scan-id 不能与 --activity-id 或 --sessions-* 计数同时使用")
+        activity_ids, sessions_partial, sessions_interrupted, sessions_omitted = (
+            _resolve_sessions_from_scan(data_dir, day, args.sessions_scan_id)
+        )
+    else:
+        activity_ids = list(args.activity_ids)
+        sessions_partial = 0 if args.sessions_partial is None else args.sessions_partial
+        sessions_interrupted = 0 if args.sessions_interrupted is None else args.sessions_interrupted
+        sessions_omitted = 0 if args.sessions_omitted is None else args.sessions_omitted
+
     for name, values, prefix in (
-        ("--activity-id", args.activity_ids, "ACT-"),
+        ("--activity-id", activity_ids, "ACT-"),
         ("--work-event-id", args.work_event_ids, "EVT-"),
     ):
         if len(values) != len(set(values)):
@@ -167,7 +280,7 @@ def command_write(args: Any) -> None:
         if invalid:
             _fail(f"{name} 前缀非法：{invalid}")
     invalid_activity = next(
-        (value for value in args.activity_ids if not store.ACTIVITY_ID.fullmatch(value)),
+        (value for value in activity_ids if not store.ACTIVITY_ID.fullmatch(value)),
         None,
     )
     if invalid_activity:
@@ -187,11 +300,17 @@ def command_write(args: Any) -> None:
         _fail(f"--calendar-scan-id 格式非法：{args.calendar_scan_id}")
     if args.calendar_event_ids and not args.calendar_scan_id:
         _fail("--calendar-event-id 需要同时给出 --calendar-scan-id")
-    if args.calendar_event_ids:
-        if len(args.calendar_event_ids) != len(set(args.calendar_event_ids)):
+
+    calendar_event_ids = list(args.calendar_event_ids)
+    if args.calendar_scan_id and not calendar_event_ids:
+        calendar_event_ids = _resolve_calendar_events_from_scan(
+            data_dir, day, args.calendar_scan_id
+        )
+    if calendar_event_ids:
+        if len(calendar_event_ids) != len(set(calendar_event_ids)):
             _fail("--calendar-event-id 不能重复")
         invalid_calendar_id = next(
-            (value for value in args.calendar_event_ids if not store.CALENDAR_EVENT_ID.fullmatch(value)),
+            (value for value in calendar_event_ids if not store.CALENDAR_EVENT_ID.fullmatch(value)),
             None,
         )
         if invalid_calendar_id:
@@ -201,8 +320,8 @@ def command_write(args: Any) -> None:
         # 日历只在启用并扫描过时进入 frontmatter；没给 scan 时两个字段都不出现。
         calendar_updates = {
             "calendar_scan_id": args.calendar_scan_id,
-            "calendar_events": len(args.calendar_event_ids),
-            "calendar_event_ids": args.calendar_event_ids,
+            "calendar_events": len(calendar_event_ids),
+            "calendar_event_ids": calendar_event_ids,
         }
 
     with store.locked(reports_root):
@@ -214,16 +333,16 @@ def command_write(args: Any) -> None:
                 begin_hint="reports begin",
                 label=f"{day.isoformat()} 的日报",
                 meta_updates={
-                    "sessions_activities": len(args.activity_ids),
-                    "sessions_partial": args.sessions_partial,
-                    "sessions_interrupted": args.sessions_interrupted,
-                    "sessions_omitted": args.sessions_omitted,
+                    "sessions_activities": len(activity_ids),
+                    "sessions_partial": sessions_partial,
+                    "sessions_interrupted": sessions_interrupted,
+                    "sessions_omitted": sessions_omitted,
                     "work_events": len(args.work_event_ids),
                     "user_notes": args.user_notes,
                     "unresolved": args.unresolved,
                     "git_scan_id": args.git_scan_id,
                     "git_commits": len(args.git_commit_ids),
-                    "activity_ids": args.activity_ids,
+                    "activity_ids": activity_ids,
                     "work_event_ids": args.work_event_ids,
                     "git_commit_ids": args.git_commit_ids,
                     **calendar_updates,
@@ -232,26 +351,31 @@ def command_write(args: Any) -> None:
         except ReportError as exc:
             _fail(str(exc))
 
+    if not args.json:
+        for warning in lint_result["warnings"]:
+            print(f"! 正文提示：{warning}", file=sys.stderr)
+
     _emit(
         args,
         {
             "day": day.isoformat(),
             "path": str(path),
             "status": "draft",
-            "sessions_activities": len(args.activity_ids),
-            "sessions_partial": args.sessions_partial,
-            "sessions_interrupted": args.sessions_interrupted,
-            "sessions_omitted": args.sessions_omitted,
+            "sessions_activities": len(activity_ids),
+            "sessions_partial": sessions_partial,
+            "sessions_interrupted": sessions_interrupted,
+            "sessions_omitted": sessions_omitted,
             "work_events": len(args.work_event_ids),
             "user_notes": args.user_notes,
             "unresolved": args.unresolved,
             "git_scan_id": args.git_scan_id,
             "git_commits": len(args.git_commit_ids),
             "calendar_scan_id": args.calendar_scan_id,
-            "calendar_events": len(args.calendar_event_ids) if args.calendar_scan_id else None,
+            "calendar_events": len(calendar_event_ids) if args.calendar_scan_id else None,
+            "lint_warnings": lint_result["warnings"],
         },
         [
-            f"{day.isoformat()} 的日报草稿已写入 · 会话 {len(args.activity_ids)}"
+            f"{day.isoformat()} 的日报草稿已写入 · 会话 {len(activity_ids)}"
             f" · work {len(args.work_event_ids)} · 待确认 {args.unresolved}"
         ],
     )
@@ -532,6 +656,83 @@ def command_periodic_list(args: Any) -> None:
     _emit(args, payload, lines)
 
 
+def command_prepare(args: Any) -> None:
+    payload = prepare_module.prepare_daily_context(args.data_dir, args.day)
+    if args.json:
+        print(json.dumps(payload, ensure_ascii=False, indent=2))
+        return
+    report = payload["report"]
+    status = report.get("status") or "未生成"
+    prev = payload["previous_confirmed"]
+    prev_label = prev["day"] if prev else "无"
+    sources = payload["sources"]
+    ready_flags = ", ".join(
+        f"{name}:{'就绪' if sources[name]['ready'] else '未就绪'}"
+        for name in ("sessions", "git", "dchat", "calendar")
+    )
+    print(f"{payload['day']} 日报准备 · 状态 {status} · 上期已确认 {prev_label}")
+    print(f"项目：{payload['projects']['valid_count']} 个有效 · findings {len(payload['projects']['findings'])}")
+    print(f"证据：{ready_flags}")
+    work = payload["work"]
+    print(
+        f"Work：{'已初始化' if work['initialized'] else '未初始化'}"
+        f" · 当日事件 {len(work['window_events'])} · 当日新记 {len(work['same_day_entries'])}"
+    )
+
+
+def command_lint(args: Any) -> None:
+    reports_root: Path = args.reports_root
+    targets: List[Path] = []
+    if args.day is not None:
+        path = store.report_path(reports_root, args.day)
+        if not path.exists():
+            _fail(f"{args.day.isoformat()} 还没有日报：{path}")
+        targets.append(path)
+    else:
+        for row in store.list_reports(reports_root):
+            if not row.get("error"):
+                targets.append(Path(row["path"]))
+
+    results: List[Dict[str, Any]] = []
+    has_failure = False
+    for path in targets:
+        try:
+            meta, body = store.read_report(path)
+        except ReportError as exc:
+            results.append({"path": str(path), "day": path.stem, "errors": [str(exc)], "warnings": []})
+            has_failure = True
+            continue
+        checked = store.lint_report_body(body)
+        if checked["errors"] or (args.strict and checked["warnings"]):
+            has_failure = True
+        results.append({
+            "day": meta.get("day") or path.stem,
+            "path": str(path),
+            "status": meta.get("status"),
+            "errors": checked["errors"],
+            "warnings": checked["warnings"],
+        })
+
+    payload = {
+        "checked": len(results),
+        "strict": bool(args.strict),
+        "ok": not has_failure,
+        "reports": results,
+    }
+    if args.json:
+        print(json.dumps(payload, ensure_ascii=False, indent=2))
+    else:
+        for item in results:
+            for error in item["errors"]:
+                print(f"! {item['day']} [错误] {error}", file=sys.stderr)
+            for warning in item["warnings"]:
+                print(f"- {item['day']} [提示] {warning}", file=sys.stderr)
+        if not has_failure:
+            print(f"日报正文检查通过，共检查 {len(results)} 份。")
+    if has_failure:
+        raise SystemExit(1)
+
+
 def command_validate(args: Any) -> None:
     reports_root: Path = args.reports_root
     findings = store.check_directory(reports_root)
@@ -576,12 +777,30 @@ def register_reports_parser(domains: Any, data_dir: Path) -> None:
         epilog=(
             "自然日按 Asia/Shanghai 的 [00:00, 24:00) 计算。"
             "begin/write/confirm 会写入日报，周期报使用 periodic 子命令；"
-            "path/list/validate 与 periodic sources/path/list 只读；"
+            "prepare/path/list/validate/lint 与 periodic sources/path/list 只读；"
             "所有正文都由 lifeos Skill 生成。"
         ),
     )
-    reports.set_defaults(reports_root=data_dir / "reports")
+    reports.set_defaults(reports_root=data_dir / "reports", data_dir=data_dir)
     commands = reports.add_subparsers(dest="command", required=True)
+
+    command = commands.add_parser(
+        "prepare",
+        help="只读汇总某自然日的日报上下文与各路证据就绪状态",
+        description=(
+            "不创建或修改任何文件，一次性返回自然日窗口、当前日报状态、"
+            "最近已确认日报、项目清单摘要、各路证据 scan 就绪状态与当日 Work 动态。"
+        ),
+    )
+    command.add_argument(
+        "--day",
+        type=_validate_day,
+        required=True,
+        metavar="YYYY-MM-DD",
+        help="目标自然日（Asia/Shanghai）",
+    )
+    command.add_argument("--json", action="store_true", help="以 JSON 输出准备上下文")
+    command.set_defaults(handler=command_prepare)
 
     command = commands.add_parser(
         "begin",
@@ -639,6 +858,16 @@ def register_reports_parser(domains: Any, data_dir: Path) -> None:
         ("--sessions-partial", "sessions_partial", "窗口内 partial Slice 数"),
         ("--sessions-interrupted", "sessions_interrupted", "窗口内 interrupted_with_result Slice 数"),
         ("--sessions-omitted", "sessions_omitted", "窗口内 explicit_abort_without_work omission 数"),
+    ):
+        command.add_argument(
+            option,
+            dest=destination,
+            type=_validate_nonnegative,
+            default=None,
+            metavar="N",
+            help=help_text + "（未传 --sessions-scan-id 时默认 0）",
+        )
+    for option, destination, help_text in (
         ("--user-notes", "user_notes", "正文采用的本人补录数"),
         ("--unresolved", "unresolved", "正文保留的未决判断数"),
     ):
@@ -650,6 +879,12 @@ def register_reports_parser(domains: Any, data_dir: Path) -> None:
             metavar="N",
             help=help_text + "（默认 0）",
         )
+    command.add_argument(
+        "--sessions-scan-id",
+        dest="sessions_scan_id",
+        metavar="SCAN-ID",
+        help="从已校验的该自然日完整 Sessions scan 自动吸纳全部 Activity ID 与清洗计数",
+    )
     command.add_argument(
         "--activity-id",
         dest="activity_ids",
@@ -908,6 +1143,24 @@ def register_reports_parser(domains: Any, data_dir: Path) -> None:
     )
     command.add_argument("--json", action="store_true", help="以 JSON 输出周期报列表")
     command.set_defaults(handler=command_periodic_list)
+
+    command = commands.add_parser(
+        "lint",
+        help="只读检查日报正文卫生（禁 ID/长 SHA/本机路径/超限条目）",
+        description=(
+            "检查指定自然日或全部当前日报的正文卫生。存在内部 ID、完整 SHA、本机路径"
+            "或「还做了」超限时退出 1；加上 --strict 时结构提示也视为失败。"
+        ),
+    )
+    command.add_argument(
+        "--day",
+        type=_validate_day,
+        metavar="YYYY-MM-DD",
+        help="只检查该自然日的日报；省略时检查全部当前日报",
+    )
+    command.add_argument("--strict", action="store_true", help="将结构与篇幅提示也视为失败")
+    command.add_argument("--json", action="store_true", help="以 JSON 输出检查结果")
+    command.set_defaults(handler=command_lint)
 
     command = commands.add_parser(
         "validate",

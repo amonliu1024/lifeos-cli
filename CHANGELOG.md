@@ -13,6 +13,9 @@
 
 ### 新增
 
+- `lifeos reports prepare --day YYYY-MM-DD [--json]` 只读汇总目标自然日的日报状态、前序已确认日报、项目清单摘要、四路证据 scan 就绪状态与当日 Work 动态。
+- `lifeos reports write --sessions-scan-id SCAN_ID` 从已校验的完整 Sessions scan 自动吸纳全部唯一 Activity ID 与清洗计数；传 `--calendar-scan-id` 且未显式指定 `--calendar-event-id` 时自动吸纳该日历 scan 的全部日程 ID。
+- `lifeos reports lint [--day YYYY-MM-DD] [--strict] [--json]` 只读检查日报正文卫生；`reports write` 同步拦截正文中泄漏的内部 ID、40 位 commit SHA、本机路径与超限「还做了」条目，`reports validate` 保持兼容历史日报。
 - Sessions 新增 AntiGravity CLI 只读来源（`antigravity`），从本机 `~/.gemini/antigravity-cli` 采集请求、最终答复与有界执行证据；新安装默认启用，既有私有配置保持显式来源选择不变。
 - `lifeos work task-add --note "…"` 记下待办时一起写一句进展，这句进展也排进进展历史，不必记下后再补一次 `entry-update`。
 - `lifeos work entry-backfill ID --as-of YYYY-MM-DD --note "…"` 补记一版更早的进展：只追加一条带成立日期的审计事件，这一笔当前的进展、背景和更新时间都不变；Web 详情按成立日期把补记排进进展历史。

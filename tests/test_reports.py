@@ -9,8 +9,12 @@ from unittest import mock
 from datetime import date
 from pathlib import Path
 
+from lifeos_calendar.store import CalendarStore
+from lifeos_config.core import default_payload
 from lifeos_reports import store
 from lifeos_sessions.activity_ids import activity_id
+from lifeos_sessions.core import AdapterResult, ConversationSlice, TimeWindow
+from lifeos_sessions.store import SessionsStore
 
 
 REPO_DIR = Path(__file__).resolve().parents[1]
@@ -818,6 +822,218 @@ class PruneTest(ReportsCLITestCase):
         self.assertEqual(1, len(payload["removed"]))
         self.assertEqual([], store.superseded_paths(self.reports_root, date(2026, 8, 9)))
         self.assertEqual(1, len(store.superseded_paths(self.reports_root, date(2026, 8, 10))))
+
+
+class PrepareWriteScanAndLintTest(ReportsCLITestCase):
+    def setUp(self):
+        super().setUp()
+        self.config_path = self.data_dir / "config.json"
+        payload = default_payload()
+        payload["modules"]["sessions"]["sources"] = ["codex"]
+        self.config_path.write_text(json.dumps(payload, ensure_ascii=False), encoding="utf-8")
+        self.environment["LIFEOS_CONFIG"] = str(self.config_path)
+
+    def _commit_sessions_scan(self, day="2026-08-09", scan_id="SCAN-20260809-001", *, status="complete"):
+        w_from, w_to = store.day_window(date.fromisoformat(day))
+        tw = TimeWindow.from_values(w_from.isoformat(), w_to.isoformat())
+        raw_slice = {
+            "schema_version": 1,
+            "source": "codex",
+            "native_unit": {"kind": "turn", "id": "turn-1"},
+            "conversation": {"id": "conv-1", "title": "合成任务"},
+            "workspace": str(self.data_dir / "proj"),
+            "started_at": f"{day}T09:00:00+08:00",
+            "ended_at": f"{day}T09:10:00+08:00",
+            "content_completeness": "complete" if status == "complete" else "partial",
+            "turn_completion": "completed",
+            "blocks": [
+                {"kind": "message", "author_role": "user", "origin": "user", "at": f"{day}T09:00:00+08:00", "text": "完成合成能力"},
+                {"kind": "agent_message", "author_role": "assistant", "origin": "agent", "at": f"{day}T09:05:00+08:00", "text": "已实现合成能力"},
+            ],
+            "execution_evidence": {
+                "changed_targets": ["src/app.py"],
+                "other_targets": [],
+                "tool_calls": [],
+                "verifications": [],
+                "failures": [],
+                "user_interrupts": [],
+            },
+            "delegations": [],
+            "source_meta": {},
+        }
+        conv_slice = ConversationSlice.from_dict(raw_slice)
+        sessions_store = SessionsStore(self.data_dir / "sessions")
+        sessions_store.commit_scan(
+            scan_id,
+            [AdapterResult(source="codex", status=status, slices=[conv_slice], stats={"examined": 1})],
+            window=tw,
+            status=status,
+        )
+        return scan_id
+
+    def _commit_calendar_scan(self, day="2026-08-09"):
+        w_from, w_to = store.day_window(date.fromisoformat(day))
+        cal_store = CalendarStore(self.data_dir / "calendar")
+        return cal_store.write_scan({
+            "schema_version": 1,
+            "status": "complete",
+            "window": {"from": w_from.isoformat(), "to": w_to.isoformat()},
+            "events": [
+                {
+                    "instance_id": "CAL-aabbccddeeff",
+                    "event_id": "E-1",
+                    "series_key": "S-1",
+                    "summary": "需求评审",
+                    "dtstart": f"{day}T10:00:00+08:00",
+                    "dtend": f"{day}T11:00:00+08:00",
+                    "type": "Single",
+                    "attendees": ["张三"],
+                }
+            ],
+            "summary": {"events": 1},
+            "warnings": [],
+        })
+
+    def test_prepare_is_read_only_and_summarizes_previous_sources_and_work(self):
+        empty = json.loads(self.run_cli("prepare", "--day", "2026-08-09", "--json").stdout)
+        self.assertFalse(empty["report"]["exists"])
+        self.assertIsNone(empty["previous_confirmed"])
+        self.assertFalse(empty["sources"]["sessions"]["ready"])
+        self.assertFalse(empty["work"]["initialized"])
+        self.assertFalse(self.daily_dir.exists())
+
+        # Create 2026-08-06 confirmed, 2026-08-07 draft, 2026-08-08 missing.
+        self.run_cli("begin", "--day", "2026-08-06")
+        self.write_body("2026-08-06", "# 当日概览\n\n前序已确认。\n")
+        self.run_cli("confirm", "--day", "2026-08-06")
+        self.run_cli("begin", "--day", "2026-08-07")
+        self.write_body("2026-08-07", "# 当日概览\n\n草稿。\n")
+
+        self._commit_sessions_scan("2026-08-09", "SCAN-20260809-001")
+        cal_scan = self._commit_calendar_scan("2026-08-09")
+        cfg = json.loads(self.config_path.read_text(encoding="utf-8"))
+        cfg["modules"]["calendar"] = {"enabled": True}
+        self.config_path.write_text(json.dumps(cfg, ensure_ascii=False), encoding="utf-8")
+
+        (self.data_dir / "entries.json").write_text(
+            json.dumps({
+                "updated_at": "2026-08-09T18:00:00+08:00",
+                "entries": [
+                    {
+                        "id": "NOTE-20260809-001",
+                        "kind": "note",
+                        "text": "今日关键取舍：放弃重重写解析器",
+                        "project": None,
+                        "status": "open",
+                        "note": None,
+                        "ref": None,
+                        "context": None,
+                        "created_at": "2026-08-09T17:30:00+08:00",
+                        "updated_at": "2026-08-09T17:30:00+08:00",
+                    }
+                ],
+            }, ensure_ascii=False),
+            encoding="utf-8",
+        )
+        (self.data_dir / "events.jsonl").write_text(
+            json.dumps({
+                "event_id": "EVT-20260809-001",
+                "kind": "note_added",
+                "entry_id": "NOTE-20260809-001",
+                "occurred_at": "2026-08-09T17:30:00+08:00",
+                "summary": "记下随记",
+            }, ensure_ascii=False) + "\n",
+            encoding="utf-8",
+        )
+
+        prepared = json.loads(self.run_cli("prepare", "--day", "2026-08-09", "--json").stdout)
+        self.assertEqual("2026-08-06", prepared["previous_confirmed"]["day"])
+        self.assertEqual(["2026-08-08"], prepared["previous_confirmed"]["gap_missing_days"])
+        self.assertEqual(["2026-08-07"], prepared["previous_confirmed"]["gap_draft_days"])
+        self.assertTrue(prepared["sources"]["sessions"]["ready"])
+        self.assertEqual("SCAN-20260809-001", prepared["sources"]["sessions"]["latest_scan"]["scan_id"])
+        self.assertTrue(prepared["sources"]["calendar"]["ready"])
+        self.assertEqual(cal_scan["scan_id"], prepared["sources"]["calendar"]["latest_scan"]["scan_id"])
+        self.assertTrue(prepared["work"]["initialized"])
+        self.assertEqual(1, len(prepared["work"]["same_day_entries"]))
+        self.assertEqual(1, len(prepared["work"]["window_events"]))
+
+    def test_write_absorbs_sessions_and_calendar_scans_and_rejects_conflicts(self):
+        scan_id = self._commit_sessions_scan("2026-08-09", "SCAN-20260809-002", status="partial")
+        cal_scan = self._commit_calendar_scan("2026-08-09")
+        self.run_cli("begin", "--day", "2026-08-09")
+
+        conflict = self.run_cli(
+            "write", "--day", "2026-08-09", "--body-file", "-",
+            "--sessions-scan-id", scan_id, "--sessions-partial", "0",
+            input_text="# 当日概览\n\n测试。\n", check=False,
+        )
+        self.assertEqual(1, conflict.returncode)
+        self.assertIn("不能与", conflict.stderr)
+
+        written = json.loads(
+            self.run_cli(
+                "write", "--day", "2026-08-09", "--body-file", "-",
+                "--sessions-scan-id", scan_id,
+                "--calendar-scan-id", cal_scan["scan_id"],
+                "--json",
+                input_text="# 当日概览\n\n完成合成能力接入。\n",
+            ).stdout
+        )
+        self.assertEqual(1, written["sessions_activities"])
+        self.assertEqual(1, written["sessions_partial"])
+        self.assertEqual(1, written["calendar_events"])
+        self.assertEqual([], written["lint_warnings"])
+
+        meta, _body = store.read_report(self.report("2026-08-09"))
+        self.assertEqual(["CAL-aabbccddeeff"], meta["calendar_event_ids"])
+        self.assertEqual(0, self.run_cli("validate", check=False).returncode)
+
+        wrong_day = self.run_cli("begin", "--day", "2026-08-10")
+        self.assertEqual(0, wrong_day.returncode)
+        mismatch = self.run_cli(
+            "write", "--day", "2026-08-10", "--body-file", "-",
+            "--sessions-scan-id", scan_id,
+            input_text="# 当日概览\n\n测试。\n", check=False,
+        )
+        self.assertEqual(1, mismatch.returncode)
+        self.assertIn("窗口不是 2026-08-10", mismatch.stderr)
+
+    def test_write_and_lint_enforce_hygiene_without_breaking_legacy_validate(self):
+        self.run_cli("begin", "--day", "2026-08-09")
+        before = self.report("2026-08-09").read_bytes()
+
+        too_many_items = "\n".join(f"- 事项 {idx}" for idx in range(1, 12))
+        bad_bodies = [
+            ("内部 ID", "# 当日概览\n\n完成了 TASK-20260809-001。\n"),
+            ("完整 commit SHA", f"# 当日概览\n\n已提交 {'a' * 40}。\n"),
+            ("本机绝对路径", "# 当日概览\n\n改了 /Users/demo/project/main.py。\n"),
+            ("超过 10 条", f"# 当日概览\n\n## 还做了\n{too_many_items}\n"),
+        ]
+        for label, bad_body in bad_bodies:
+            with self.subTest(case=label):
+                rejected = self.run_cli(
+                    "write", "--day", "2026-08-09", "--body-file", "-",
+                    input_text=bad_body, check=False,
+                )
+                self.assertEqual(1, rejected.returncode)
+                self.assertIn("正文卫生检查未通过", rejected.stderr)
+                self.assertEqual(before, self.report("2026-08-09").read_bytes())
+
+        # Legacy report with carryover section: write returns warning, validate passes, strict lint fails.
+        legacy_body = "# 当日概览\n\n推进正常。\n\n## 待办与依赖\n- 等张三反馈\n"
+        written = json.loads(
+            self.run_cli(
+                "write", "--day", "2026-08-09", "--body-file", "-",
+                "--json", input_text=legacy_body,
+            ).stdout
+        )
+        self.assertTrue(any("待办与依赖" in w for w in written["lint_warnings"]))
+        self.assertEqual(0, self.run_cli("validate", check=False).returncode)
+        self.assertEqual(0, self.run_cli("lint", "--day", "2026-08-09", check=False).returncode)
+        strict = self.run_cli("lint", "--day", "2026-08-09", "--strict", "--json", check=False)
+        self.assertEqual(1, strict.returncode)
+        self.assertFalse(json.loads(strict.stdout)["ok"])
 
 
 if __name__ == "__main__":
