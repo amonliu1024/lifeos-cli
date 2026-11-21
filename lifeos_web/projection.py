@@ -133,6 +133,8 @@ def build_snapshot(
     reports_root: Path,
     reference_date: date | None = None,
     events: list[dict[str, Any]] | None = None,
+    *,
+    company_time: dict[str, Any] | None = None,
 ) -> dict[str, Any]:
     """Build the single browser projection without retaining or writing state.
 
@@ -172,6 +174,7 @@ def build_snapshot(
         "urgent_window_days": URGENT_WINDOW_DAYS,
         "entries": entries,
         "reports": _report_index(reports_root),
+        "company_time": company_time if company_time is not None else {},
     }
 
 

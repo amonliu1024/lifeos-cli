@@ -124,6 +124,23 @@ class MirrorCLITest(unittest.TestCase):
         self.assertTrue(json.loads(result.stdout)["dry_run"])
         self.assertIn("cd+++++++ data/", result.stderr)
 
+    def test_push_stages_company_time_once_for_recovery_and_web(self):
+        self.write_runtime()
+        self.run_cli("company-time", "set", "2026-10-31", "--start", "10:00", "--end", "2026-11-01 00:40")
+        self.run_cli("config", "mirror", "--target", "lab:mirror")
+        self.run_cli("push")
+
+        backup = self.capture / "data" / "company-time.json"
+        snapshot = self.capture / "site" / "api" / "snapshot"
+        records = json.loads(backup.read_text(encoding="utf-8"))
+        self.assertEqual(
+            {"2026-10-31": {"started_at": "2026-10-31T10:00+08:00", "ended_at": "2026-11-01T00:40+08:00"}},
+            records,
+        )
+        self.assertEqual(records, json.loads(snapshot.read_text(encoding="utf-8"))["company_time"])
+        self.assertEqual(0o600, backup.stat().st_mode & 0o777)
+        self.assertFalse((self.capture / "data" / ".lifeos-company-time.lock").exists())
+
     def test_push_requires_configured_target(self):
         self.write_runtime()
         result = self.run_cli("push", check=False)

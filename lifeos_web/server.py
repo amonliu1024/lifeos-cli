@@ -13,6 +13,7 @@ from pathlib import Path
 from typing import Any, Callable
 from urllib.parse import unquote, urlparse
 
+from lifeos_company_time.store import read_records
 from lifeos_reports.store import ReportError
 from lifeos_work.runtime import read_current_data, read_events
 
@@ -116,6 +117,7 @@ class LifeOSRequestHandler(BaseHTTPRequestHandler):
                     self.server.current_data_reader(),
                     self.server.reports_root,
                     events=self.server.events_reader(),
+                    company_time=read_records(self.server.reports_root.parent),
                 )
             except SystemExit as exc:
                 self._error(HTTPStatus.CONFLICT, f"Work Runtime 无法读取（退出码 {exc.code}）")

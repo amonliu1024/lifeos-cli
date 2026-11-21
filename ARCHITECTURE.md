@@ -12,12 +12,12 @@ lifeos-cli 仓库
                     |
                     v
 $LIFEOS_HOME（默认 ~/.local/share/lifeos）
-  Work 权威事实、审计事件、证据存储、日报与周期报
+  Work 权威事实、审计事件、上班簿、证据存储、日报与周期报
                     |
                     | lifeos push（手动、单向）
                     v
 镜像目标 <target>/（可选）
-  data/  Work 事实、审计事件、日报与周期报原文
+  data/  Work 事实、审计事件、上班簿、日报与周期报原文
   site/  本机渲染的只读工作台，以 SSH 账户运行的静态服务把它作为站点根目录托管
 ```
 
@@ -32,8 +32,8 @@ $LIFEOS_HOME（默认 ~/.local/share/lifeos）
 - `lifeos_projects.catalog.ProjectCatalog` 从私人配置声明的根目录动态发现清单，隔离非法清单与同键冲突，并为 Work、Sessions、DChat 和 Git 提供唯一项目目录 seam。
 - DChat 扫描从 Project Catalog 派生群 VID 并集；同一份清单关系同时决定群正文采集与项目索引，不用 Runtime 映射维护第二套 scope。
 - `lifeos_config` 负责本机私有模块设置和无副作用的能力检查。
-- `lifeos_web` 把现有 Work 与 Reports 读取入口投影为仅回环可达的只读页面；投影不落盘、不缓存，也不拥有任何个人事实。
-- `lifeos_mirror`（命令 `lifeos push`）在 Work 与 Reports 锁内暂存 `data/`（Work 事实、审计事件、`reports/`）并调用 `lifeos_web.publish` 渲染 `site/`，再用 rsync 单向推到私有配置 `modules.mirror.target`；`site/` 以与回环服务相同的 `/api/*` 路径保存 JSON，前端不区分宿主，镜像端只读、不回写本机。
+- `lifeos_web` 把现有 Work、上班簿与 Reports 读取入口投影为仅回环可达的只读页面；投影不落盘、不缓存，也不拥有任何个人事实。
+- `lifeos_mirror`（命令 `lifeos push`）在 Work 与 Reports 锁内暂存 `data/`（Work 事实、审计事件、`reports/`），一次读取上班簿，供数据镜像和 `lifeos_web.publish` 渲染 `site/` 共用，再用 rsync 单向推到私有配置 `modules.mirror.target`；`site/` 以与回环服务相同的 `/api/*` 路径保存 JSON，前端不区分宿主，镜像端只读、不回写本机。
 
 是否在某台机器上启用内置模块，始终是本机私有配置的选择。
 
@@ -47,6 +47,7 @@ $LIFEOS_HOME（默认 ~/.local/share/lifeos）
 | 当前项目目录 | 动态 Project Catalog | 只读完整扫描；不持久化为第二事实源 |
 | 已启用模块和本机路径 | 私有配置 | `lifeos config` 或模块配置命令 |
 | 个人工作事实 | Work Runtime | 仅通过 `lifeos work` |
+| 上下班时间 | 私有 Runtime 中的 `company-time.json` | 仅通过 `lifeos company-time set`，按归属日期锁内更新并原子替换 |
 | Agent 会话派生数据 | Sessions Runtime | `lifeos sessions scan/rebuild/prune` |
 | 本地提交证据 | Git Evidence Runtime | `lifeos git` |
 | DChat 原始 revision 与索引 | DChat Runtime | `lifeos dchat scan` |

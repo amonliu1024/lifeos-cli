@@ -13,6 +13,7 @@
 
 ### 新增
 
+- 上班簿通过 `lifeos company-time set` 新增、补记与修改，工作台右上角只读查看，并随 `lifeos push` 镜像。
 - `lifeos reports prepare --day YYYY-MM-DD [--json]` 只读汇总目标自然日的日报状态、前序已确认日报、项目清单摘要、四路证据 scan 就绪状态与当日 Work 动态。
 - `lifeos reports write --sessions-scan-id SCAN_ID` 从已校验的完整 Sessions scan 自动吸纳全部唯一 Activity ID 与清洗计数；传 `--calendar-scan-id` 且未显式指定 `--calendar-event-id` 时自动吸纳该日历 scan 的全部日程 ID。
 - `lifeos reports lint [--day YYYY-MM-DD] [--strict] [--json]` 只读检查日报正文卫生；`reports write` 同步拦截正文中泄漏的内部 ID、40 位 commit SHA、本机路径与超限「还做了」条目，`reports validate` 保持兼容历史日报。

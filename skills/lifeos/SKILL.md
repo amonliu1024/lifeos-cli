@@ -1,11 +1,11 @@
 ---
 name: lifeos
-description: 读取或更新 LifeOS 私有工作账本，数字化项目清单，生成、补写、重做或确认日报与周期报。用于查询 LifeOS 中还有什么、最近要做什么、提醒、历史变化、成果复盘或实体关系；用于明确记下、修改、完成、排期、划掉、转化或回答 Work 记录；用于创建或维护 lifeos-project.json；也用于回答某日做了什么，或基于已确认日报总结周、月、季度、半年和年度。
+description: 读取或更新 LifeOS 私有工作账本，记录、补记或修改上下班时间，数字化项目清单，生成、补写、重做或确认日报与周期报。用于查询 LifeOS 中还有什么、最近要做什么、提醒、历史变化、成果复盘或实体关系；用于明确记下、修改、完成、排期、划掉、转化或回答 Work 记录；用于创建或维护 lifeos-project.json；也用于回答某日做了什么，或基于已确认日报总结周、月、季度、半年和年度。
 ---
 
 # LifeOS
 
-通过唯一 Agent Skill 使用 LifeOS。先探测本机能力，再判断请求属于 Project、Work、Daily 还是 Periodic，并只加载该分支需要的 reference。
+通过唯一 Agent Skill 使用 LifeOS。先探测本机能力，再按请求选择分支并读取所需参考。
 
 ## 固定入口与边界
 
@@ -24,6 +24,7 @@ Runtime authority 默认位于 `~/.local/share/lifeos/`，私人配置位于 `~/
 | 为一个项目创建、补充或校验 LifeOS 数字化清单 | 读取 [`references/project.md`](references/project.md)，进入 Project 分支 |
 | 查询工作账本、提醒、月初盘点、历史、洞见或实体关系 | 读取 [`references/work.md`](references/work.md)，进入 Work 读取分支 |
 | 明确记下或变更待办、随记、疑问、洞见及其他 Work 记录 | 读取 [`references/work.md`](references/work.md) 和 [`references/work-model.md`](references/work-model.md)，进入 Work 写入分支 |
+| 新增、补记或修改上下班时间 | 用 `lifeos company-time set YYYY-MM-DD`，日期填上班那天，按需加 `--start`、`--end`。跨天的下班时间填实际日期和时间。需要同步到网页时用 `lifeos push`。 |
 | 盘点工作区关注标记或处理 CURRENT 联动候选 | 读取 [`references/work.md`](references/work.md) 的「项目关注联动候选」一节，候选经本人确认后按 Work 写入分支执行 |
 | 生成、补写、重做或确认日报 | 读取 [`references/daily.md`](references/daily.md) 和 [`references/daily-writing-guide.md`](references/daily-writing-guide.md)；深读会话或核对异常时再读取 [`references/session-evidence.md`](references/session-evidence.md) |
 | 只读回答某个自然日做了什么 | 读取 [`references/daily-readonly.md`](references/daily-readonly.md)，不触发草稿写入或确认 |

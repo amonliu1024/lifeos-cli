@@ -5,6 +5,10 @@ const drawer = document.querySelector("#detail-drawer");
 const drawerContent = document.querySelector("#drawer-content");
 const drawerScrim = document.querySelector("#drawer-scrim");
 const toast = document.querySelector("#toast");
+const companyTimeDrawer = document.querySelector("#company-time-drawer");
+const companyTimeTrigger = document.querySelector("#company-time-trigger");
+const companyTimePane = document.querySelector("#company-time-pane");
+const companyTimeNext = document.querySelector("#company-time-next");
 
 const state = {
   snapshot: null,
@@ -18,6 +22,7 @@ const state = {
   reportDay: null,
   report: null,
   calendarMonth: null,
+  companyTimeMonth: null,
 };
 let focusBeforeDrawer = null;
 let reportRequest = 0;
@@ -277,6 +282,115 @@ function reportMap() {
 }
 
 function monthKey(day) { return day.slice(0, 7); }
+
+const companyTimeDate = new Intl.DateTimeFormat("en-CA", {
+  year: "numeric", month: "2-digit", day: "2-digit", timeZone: "Asia/Shanghai",
+});
+const companyTimeWeekdays = ["日", "一", "二", "三", "四", "五", "六"];
+const twoDigits = (value) => String(value).padStart(2, "0");
+
+function companyTimeToday() {
+  const { year, month, day } = Object.fromEntries(
+    companyTimeDate.formatToParts(new Date()).map(({ type, value }) => [type, value])
+  );
+  return `${year}-${month}-${day}`;
+}
+
+function companyTimeDayOffset(value, day) {
+  return (Date.parse(value.slice(0, 10)) - Date.parse(day)) / 86400000;
+}
+
+function companyTimeHour(value, day) {
+  const [hour, minute] = value.slice(11, 16).split(":").map(Number);
+  return companyTimeDayOffset(value, day) * 24 + hour + minute / 60;
+}
+
+function companyTimeOffset(days) {
+  return days ? `<sup class="company-time-offset" aria-label="偏移 ${days} 天">+${days}</sup>` : "";
+}
+
+function companyTimeLabel(value, day) {
+  if (!value) return "";
+  return `<time datetime="${esc(value)}">${esc(value.slice(11, 16))}${companyTimeOffset(companyTimeDayOffset(value, day))}</time>`;
+}
+
+function companyTimeTrack(start, end, day, position) {
+  const left = start ? position(companyTimeHour(start, day)) : null;
+  const right = end ? position(companyTimeHour(end, day)) : null;
+  const range = left !== null && right !== null ? `<line x1="${left}%" x2="${right}%" y1="6" y2="6"/>` : "";
+  const from = left !== null ? `<circle cx="${left}%" cy="6" r="2.5"/>` : "";
+  const to = right !== null ? `<circle class="is-end" cx="${right}%" cy="6" r="2.5"/>` : "";
+  return `<svg class="company-time-track" aria-hidden="true" focusable="false">${range}${from}${to}</svg>`;
+}
+
+function renderCompanyTime(today = companyTimeToday()) {
+  const month = state.companyTimeMonth;
+  const [year, number] = month.split("-").map(Number);
+  const currentMonth = monthKey(today);
+  const count = month === currentMonth ? Number(today.slice(8)) : new Date(Date.UTC(year, number, 0)).getUTCDate();
+  const records = state.snapshot.company_time ?? {};
+  const dates = Array.from({ length: count }, (_, index) => `${month}-${twoDigits(count - index)}`);
+  const hours = dates.flatMap((day) => {
+    const record = records[day];
+    return record ? [record.started_at, record.ended_at].filter(Boolean).map((value) => companyTimeHour(value, day)) : [];
+  });
+  const minHour = Math.min(8, ...hours);
+  const maxHour = Math.max(28, ...hours);
+  const step = Math.max(4, Math.ceil((maxHour - minHour) / 24) * 4);
+  const midnight = 24;
+  const first = midnight + Math.floor((minHour - midnight) / step) * step;
+  const steps = Math.ceil((maxHour - first) / step);
+  const position = (hour) => (hour - first) / (steps * step) * 100;
+  const ticks = Array.from({ length: steps + 1 }, (_, index) => first + index * step);
+  document.querySelector("#company-time-month").textContent = `${year} 年 ${number} 月`;
+  document.querySelector("#company-time-axis").innerHTML = ticks.map((hour) =>
+    `<span>${twoDigits((hour % 24 + 24) % 24)}${hour === midnight ? companyTimeOffset(1) : ""}</span>`
+  ).join("");
+  companyTimeNext.disabled = month >= currentMonth;
+  document.querySelector("#company-time-rows").innerHTML = dates.map((day, index) => {
+    const weekday = new Date(day).getUTCDay();
+    const { started_at: start, ended_at: end } = records[day] ?? {};
+    const quiet = (weekday === 0 || weekday === 6) && !start && !end;
+    const classes = [quiet ? "is-quiet-weekend" : "", weekday === 0 && index > 0 ? "is-week-break" : ""].join(" ");
+    const times = quiet ? '<td class="company-time-start" colspan="3">无记录</td>'
+      : `<td class="company-time-start">${companyTimeLabel(start, day)}</td>
+         <td class="company-time-chart">${companyTimeTrack(start, end, day, position)}</td>
+         <td class="company-time-end">${companyTimeLabel(end, day)}</td>`;
+    return `<tr class="${classes}">
+      <th scope="row"><time datetime="${day}">${day.slice(5).replace("-", "/")}</time></th>
+      <td class="company-time-weekday" aria-label="周${companyTimeWeekdays[weekday]}">${companyTimeWeekdays[weekday]}</td>
+      ${times}</tr>`;
+  }).join("");
+}
+
+function changeCompanyTimeMonth(step) {
+  const [year, month] = state.companyTimeMonth.split("-").map(Number);
+  const next = new Date(Date.UTC(year, month - 1 + step, 1)).toISOString().slice(0, 7);
+  const today = companyTimeToday();
+  if (next > monthKey(today)) return;
+  state.companyTimeMonth = next;
+  renderCompanyTime(today);
+  companyTimePane.scrollTop = 0;
+  if (step > 0 && companyTimeNext.disabled) companyTimePane.focus({ preventScroll: true });
+}
+
+companyTimeTrigger.addEventListener("click", () => {
+  const today = companyTimeToday();
+  state.companyTimeMonth = monthKey(today);
+  renderCompanyTime(today);
+  companyTimeDrawer.showModal();
+  companyTimePane.scrollTop = 0;
+});
+document.querySelector("#company-time-prev").addEventListener("click", () => changeCompanyTimeMonth(-1));
+companyTimeNext.addEventListener("click", () => changeCompanyTimeMonth(1));
+document.querySelector("#company-time-close").addEventListener("click", () => companyTimeDrawer.close());
+companyTimeDrawer.addEventListener("click", (event) => {
+  if (event.target !== companyTimeDrawer) return;
+  const { left, right, top, bottom } = companyTimeDrawer.getBoundingClientRect();
+  if (event.clientX < left || event.clientX > right || event.clientY < top || event.clientY > bottom) {
+    companyTimeDrawer.close();
+  }
+});
 
 function calendarMarkup() {
   const reports = reportMap();
@@ -572,7 +686,9 @@ document.addEventListener("click", (event) => {
   if (action === "open-report") openReport();
 });
 
-document.addEventListener("keydown", (event) => { if (event.key === "Escape") closeDrawer(); });
+document.addEventListener("keydown", (event) => {
+  if (event.key === "Escape" && !companyTimeDrawer.open) closeDrawer();
+});
 
 async function refreshSnapshot({ initial = false } = {}) {
   if (snapshotRequest) return snapshotRequest;
@@ -582,6 +698,8 @@ async function refreshSnapshot({ initial = false } = {}) {
     if (!response.ok) throw new Error(payload.error || "本地账本读取失败");
     const initializing = initial || !state.snapshot;
     state.snapshot = payload;
+    companyTimeTrigger.disabled = false;
+    if (companyTimeDrawer.open) renderCompanyTime();
     lastSnapshotAt = Date.now();
     if (initializing) {
       const hash = window.location.hash.slice(1);

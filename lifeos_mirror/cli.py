@@ -42,9 +42,9 @@ def command_push(args: Any) -> None:
 def register_push_parser(domains: argparse._SubParsersAction, data_dir: Path) -> None:
     command = domains.add_parser(
         "push",
-        help="把 Work 数据、日报与只读站点单向镜像到自己的服务器",
+        help="把 Work 数据、上班簿、报告与只读站点单向镜像到自己的服务器",
         description=(
-            "通过 SSH 与 rsync 向私有配置中的镜像目标推送两部分：data/ 是 Work 事实、审计事件和日报，"
+            "通过 SSH 与 rsync 向私有配置中的镜像目标推送两部分：data/ 是 Work 事实、审计事件、上班簿和报告，"
             "site/ 是在本机渲染好的只读工作台静态文件，由以 SSH 账户运行的静态服务作为站点根目录托管；"
             "推送后的文件只有该账户可读。"
             "目标下这两个目录与本机保持一致，本机已删除的日报也会在目标端删除。"

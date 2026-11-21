@@ -1,7 +1,7 @@
-"""Push necessary Work data and a published read-only site to a mirror target.
+"""Push necessary local records and a published read-only site to a mirror target.
 
 Under the Work and Reports locks the push stages two trees: ``data/`` holds the
-Work facts, audit events and reports needed to rebuild LifeOS, ``site/`` holds
+Work facts, audit events, company time and reports needed to rebuild LifeOS, ``site/`` holds
 the static workspace rendered on this machine. Derived views, Sessions, Git
 and DChat evidence, backups and private configuration are never staged, so the
 whitelist below is the whole outbound boundary. rsync then replaces exactly
@@ -19,6 +19,7 @@ import tempfile
 from pathlib import Path
 from typing import Any
 
+from lifeos_company_time.store import FILENAME as COMPANY_TIME_FILENAME, Records, read_records
 from lifeos_reports.store import ReportError, locked as reports_locked
 from lifeos_web.publish import write_site
 from lifeos_work.config import (
@@ -27,7 +28,7 @@ from lifeos_work.config import (
     GLOSSARY_PATH,
     PROJECTS_PATH,
 )
-from lifeos_work.runtime import exclusive_lock
+from lifeos_work.runtime import atomic_write_json, exclusive_lock
 
 MIRROR_WORK_PATHS = (
     PROJECTS_PATH,
@@ -42,7 +43,7 @@ class MirrorError(RuntimeError):
     """Raised when the mirror cannot be pushed."""
 
 
-def _stage_data(destination: Path, reports_root: Path) -> list[str]:
+def _stage_data(destination: Path, reports_root: Path, company_time: Records) -> list[str]:
     destination.mkdir()
     staged = []
     for path in MIRROR_WORK_PATHS:
@@ -56,6 +57,9 @@ def _stage_data(destination: Path, reports_root: Path) -> list[str]:
             ignore=lambda _directory, names: [name for name in names if name.startswith(".")],
         )
         staged.append(reports_root.name)
+    if company_time:
+        atomic_write_json(destination / COMPANY_TIME_FILENAME, company_time)
+        staged.append(COMPANY_TIME_FILENAME)
     return staged
 
 
@@ -74,11 +78,12 @@ def push(target: str, reports_root: Path, *, dry_run: bool = False) -> dict[str,
     with tempfile.TemporaryDirectory(prefix="lifeos-mirror-") as temporary:
         staging = Path(temporary)
         with exclusive_lock(), reports_locked(reports_root):
-            data = _stage_data(staging / "data", reports_root)
-            if not data:
-                raise MirrorError("本机没有可镜像的 Work 或日报数据")
             try:
-                reports = write_site(staging / "site", reports_root)
+                company_time = read_records(reports_root.parent)
+                data = _stage_data(staging / "data", reports_root, company_time)
+                if not data:
+                    raise MirrorError("本机没有可镜像的数据")
+                reports = write_site(staging / "site", reports_root, company_time=company_time)
             except (ReportError, ValueError, OSError) as exc:
                 raise MirrorError(f"无法生成只读站点：{exc}") from exc
             except SystemExit as exc:

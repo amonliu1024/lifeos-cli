@@ -82,6 +82,7 @@ def capability_report(config: LifeOSConfig) -> dict[str, Any]:
         },
         "modules": {
             "work": _status("ready", "built_in"),
+            "company_time": _status("ready", "built_in"),
             "project": projects,
             "reports": _status("ready", "built_in"),
             "git": _status(

@@ -66,6 +66,9 @@
   --space-12: 48px;
   --space-16: 64px;
   --space-18: 72px;
+  --workspace-width: 1180px;
+  --workspace-gutter: max(var(--space-6), calc((100vw - var(--workspace-width)) / 2));
+  --company-time-top: var(--space-16);
   --tag-height: 24px;
   --icon-inline: 16px;
   --hand-wave: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='24' height='4' viewBox='0 0 24 4'%3E%3Cpath d='M0 2 Q3 1 6 2 T12 2 T18 2 T24 2' fill='none' stroke='black' stroke-width='1.25' stroke-linecap='round'/%3E%3C/svg%3E");
@@ -106,6 +109,7 @@ body::before, .topbar::before {
 }
 body::before { position: fixed; }
 body.drawer-open { overflow: hidden; }
+body:has(.company-time-drawer[open]) { overflow: hidden; }
 
 button, a { font: inherit; }
 button { color: inherit; }
@@ -116,10 +120,11 @@ button { color: inherit; }
   z-index: 20;
   top: 0;
   display: grid;
-  grid-template-columns: 1fr auto 1fr;
+  grid-template-columns: minmax(0, 1fr) auto minmax(0, 1fr);
   align-items: center;
   height: var(--space-18);
-  padding: 0 var(--space-8);
+  padding: 0 var(--workspace-gutter);
+  column-gap: var(--space-2);
   background: var(--paper);
 }
 .topbar::before { position: absolute; }
@@ -132,6 +137,7 @@ button { color: inherit; }
   color: var(--ink);
   text-decoration: none;
 }
+.topbar .brand { margin-inline-start: calc(var(--space-8) - var(--workspace-gutter)); }
 
 .brand-logo { display: block; height: 24px; width: auto; }
 
@@ -176,7 +182,7 @@ button { color: inherit; }
 }
 
 .workspace {
-  width: min(1180px, calc(100% - var(--space-12)));
+  width: calc(100% - 2 * var(--workspace-gutter));
   min-height: calc(100vh - var(--space-18));
   margin: 0 auto;
   padding: var(--space-2) 0 var(--space-12);
@@ -713,12 +719,146 @@ h1, h2, h3, p { margin-top: 0; }
 }
 .toast.is-visible { opacity: 1; transform: translateY(0); }
 
+.company-time-trigger, .company-time-button {
+  display: grid;
+  place-items: center;
+  width: calc(var(--space-8) - var(--space-1));
+  height: calc(var(--space-8) - var(--space-1));
+  padding: 0;
+  color: var(--muted);
+  border: 0;
+  border-radius: 8px;
+  background: transparent;
+  cursor: pointer;
+}
+.company-time-trigger {
+  grid-column: 3;
+  justify-self: end;
+  width: var(--space-8);
+  height: var(--space-8);
+  color: var(--ink);
+}
+.company-time-trigger svg, .company-time-button svg {
+  width: var(--icon-inline);
+  height: var(--icon-inline);
+  fill: none;
+  stroke: currentColor;
+  stroke-width: 1.45;
+  stroke-linecap: round;
+  stroke-linejoin: round;
+}
+.company-time-trigger svg { width: var(--space-5); height: var(--space-5); }
+.company-time-trigger:not(:disabled):hover, .company-time-button:not(:disabled):hover { background: var(--fill); }
+.company-time-trigger:disabled, .company-time-button:disabled { opacity: .4; cursor: default; }
+.company-time-trigger:focus-visible, .company-time-button:focus-visible, .company-time-pane:focus-visible {
+  outline: 2px solid var(--blue);
+  outline-offset: -2px;
+}
+
+.company-time-drawer {
+  position: fixed;
+  inset: var(--company-time-top) var(--workspace-gutter) auto auto;
+  margin: 0;
+  width: min(512px, calc(100% - 2 * var(--workspace-gutter)));
+  max-width: none;
+  max-height: min(416px, calc(100dvh - var(--company-time-top) - var(--space-3)));
+  padding: 0;
+  overflow: hidden;
+  color: var(--ink);
+  background: var(--surface);
+  border: 1px solid var(--edge);
+  border-radius: 16px 12px 16px 12px;
+  box-shadow: 0 12px 40px #24222016, 0 2px 6px #24222008;
+  -webkit-user-select: none;
+  user-select: none;
+}
+.company-time-drawer[open] {
+  display: flex;
+  flex-direction: column;
+  animation: company-time-enter 170ms cubic-bezier(.2,.7,.3,1) both;
+}
+.company-time-drawer::backdrop { background: #2422200a; }
+@keyframes company-time-enter {
+  from { opacity: 0; transform: translateY(-4px); }
+  to { opacity: 1; transform: translateY(0); }
+}
+.company-time-head, .company-time-month {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: var(--space-1) var(--space-3) var(--space-1) var(--space-4);
+}
+.company-time-head h2 { margin: 0; font-size: var(--text-body); line-height: var(--line-body); font-weight: var(--weight-title); }
+.company-time-month h3 { margin: 0; font-size: var(--text-meta); line-height: var(--line-meta); font-weight: var(--weight-body); }
+.company-time-month-nav { display: flex; gap: var(--space-1); }
+.company-time-pane {
+  min-height: 0;
+  overflow: auto;
+  overscroll-behavior: contain;
+  touch-action: pan-y pinch-zoom;
+  scrollbar-width: none;
+  padding: 0 var(--space-4) var(--space-2);
+}
+.company-time-pane::-webkit-scrollbar { display: none; }
+.company-time-table {
+  table-layout: fixed;
+  border-spacing: 0;
+  width: 100%;
+  font-size: var(--text-meta);
+  line-height: var(--line-meta);
+}
+.company-time-date-col { width: 44px; }
+.company-time-week-col { width: 28px; }
+.company-time-start-col { width: 48px; }
+.company-time-end-col { width: 56px; }
+.company-time-table th, .company-time-table td {
+  height: var(--space-8);
+  padding: 0;
+  white-space: nowrap;
+  vertical-align: middle;
+  text-align: left;
+  font-weight: var(--weight-body);
+}
+.company-time-table thead th {
+  position: sticky;
+  top: 0;
+  z-index: 1;
+  height: var(--space-6);
+  color: var(--muted);
+  background: var(--surface);
+  border-bottom: 1px solid var(--hairline);
+}
+.company-time-table tr > :first-child { padding-inline-start: var(--space-1); }
+.company-time-table .is-week-break > * { box-shadow: inset 0 1px var(--hairline); }
+.company-time-table .company-time-weekday { text-align: center; }
+.company-time-table .is-quiet-weekend > * { color: var(--faint); }
+.company-time-table .company-time-start { text-align: left; border-inline-start: 1px solid var(--hairline); padding-inline-start: var(--space-2); }
+.company-time-table .company-time-end { text-align: right; padding-inline-end: var(--space-4); }
+.company-time-table .company-time-chart { padding-inline: var(--space-4) var(--space-2); }
+.company-time-axis { display: flex; justify-content: space-between; margin-inline: 2px; color: var(--faint); }
+.company-time-axis span, .company-time-table td time { position: relative; }
+.company-time-offset {
+  position: absolute;
+  top: -2px;
+  left: calc(100% + 2px);
+  color: var(--faint);
+  font-size: 8px;
+  line-height: 10px;
+}
+.company-time-axis .company-time-offset { top: 0; }
+.company-time-track { display: block; width: calc(100% - 4px); height: 12px; margin-inline: 2px; overflow: visible; }
+.company-time-track line { stroke: var(--faint); stroke-dasharray: 2 2; opacity: .62; }
+.company-time-track circle { fill: var(--surface); stroke: var(--faint); }
+.company-time-track .is-end { fill: var(--faint); }
+
 @media (max-width: 760px) {
-  .topbar { grid-template-columns: auto 1fr; height: auto; min-height: var(--space-18); padding: var(--space-2) var(--space-4); }
+  :root { --workspace-gutter: var(--space-3); --company-time-top: 56px; }
+  .topbar { min-height: var(--space-16); height: auto; padding: var(--space-2) var(--workspace-gutter); }
+  .topbar .brand { margin-inline-start: 0; }
   .brand-logo { height: 20px; width: auto; }
   .tabs { justify-self: end; overflow-x: auto; }
   .tab { padding: var(--space-2) var(--space-3); }
-  .workspace { width: min(100% - var(--space-6), 1180px); padding-top: var(--space-6); }
+  .workspace { padding-top: var(--space-6); }
   .view-heading { flex-wrap: wrap; gap: var(--space-2); }
   .heading-divider { display: none; }
   .view-count { padding-right: var(--space-1); }
@@ -732,6 +872,17 @@ h1, h2, h3, p { margin-top: 0; }
   .report-header { align-items: center; }
   .drawer-head { padding: var(--space-6); }
   .drawer-body { padding: 0 var(--space-6) var(--space-8); }
+  .company-time-head, .company-time-month { padding-inline: var(--space-3) var(--space-2); }
+  .company-time-pane { padding-inline: var(--space-3); }
+  .company-time-week-col { width: var(--space-6); }
+  .company-time-start-col { width: 44px; }
+  .company-time-table .company-time-start { padding-inline-start: var(--space-1); }
+  .company-time-table .company-time-chart { padding-inline: var(--space-3) var(--space-1); }
+}
+
+@media (max-width: 440px) {
+  .tabs { gap: 2px; }
+  .tab { padding-inline: var(--space-2); }
 }
 
 @media (prefers-reduced-motion: reduce) {

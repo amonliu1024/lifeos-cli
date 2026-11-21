@@ -12,6 +12,7 @@ from unittest.mock import Mock
 from urllib.error import HTTPError
 from urllib.request import Request, urlopen
 
+from lifeos_company_time.store import set_record
 from lifeos_reports import store
 from lifeos_web.projection import build_snapshot, report_detail, resolve_openable_report
 from lifeos_web.server import create_server
@@ -255,10 +256,19 @@ class WebServerTest(unittest.TestCase):
         self.assertEqual(200, status)
         self.assertEqual("no-store", headers["Cache-Control"])
         self.assertIn("测试待办 1", [item["text"] for item in payload["entries"]])
+        self.assertEqual({}, payload["company_time"])
 
         status, _headers, report = self.request_json("/api/reports/2026-08-29")
         self.assertEqual(200, status)
         self.assertIn("只读 Web 工作台", report["body"])
+
+    def test_live_snapshot_reads_company_time_without_a_web_write_route(self):
+        record = set_record(self.reports_root.parent, "2026-10-31", start="10:00", end="2026-11-01 00:40")
+        status, _headers, payload = self.request_json("/api/snapshot")
+        self.assertEqual(200, status)
+        self.assertEqual({"2026-10-31": record}, payload["company_time"])
+        status, _headers, _payload = self.request_json("/api/company-time", method="POST")
+        self.assertEqual(404, status)
 
     def test_open_report_requires_explicit_intent_and_uses_canonical_path(self):
         status, _headers, payload = self.request_json(

@@ -20,6 +20,10 @@
         <button class="tab" data-tab="insights">洞见</button>
         <button class="tab" data-tab="daily">日报</button>
       </nav>
+      <button class="company-time-trigger" id="company-time-trigger" type="button" title="上班簿"
+        aria-label="打开上班簿" aria-haspopup="dialog" disabled>
+        <svg viewBox="0 0 24 24" aria-hidden="true" focusable="false"><circle cx="12" cy="12" r="8.5"/><path d="M12 7.5v4.7l3 1.9"/></svg>
+      </button>
     </header>
 
     <main id="app" class="workspace" aria-live="polite">
@@ -32,6 +36,40 @@
       </section>
     </main>
 
+    <dialog class="company-time-drawer" id="company-time-drawer" aria-labelledby="company-time-title">
+      <header class="company-time-head">
+        <h2 id="company-time-title">上班簿</h2>
+        <button type="button" class="company-time-button" id="company-time-close" aria-label="关闭上班簿" autofocus>
+          <svg viewBox="0 0 16 16" aria-hidden="true" focusable="false"><path d="m4 4 8 8m0-8-8 8"/></svg>
+        </button>
+      </header>
+      <div class="company-time-month">
+        <h3 id="company-time-month" aria-live="polite"></h3>
+        <div class="company-time-month-nav">
+          <button type="button" class="company-time-button" id="company-time-prev" aria-label="上个月">
+            <svg viewBox="0 0 16 16" aria-hidden="true" focusable="false"><path d="m9.5 4-4 4 4 4"/></svg>
+          </button>
+          <button type="button" class="company-time-button" id="company-time-next" aria-label="下个月">
+            <svg viewBox="0 0 16 16" aria-hidden="true" focusable="false"><path d="m6.5 4 4 4-4 4"/></svg>
+          </button>
+        </div>
+      </div>
+      <div class="company-time-pane" id="company-time-pane" tabindex="0" role="region" aria-label="每天的上下班时间">
+        <table class="company-time-table" aria-label="上下班记录">
+          <colgroup><col class="company-time-date-col"><col class="company-time-week-col"><col class="company-time-start-col"><col><col class="company-time-end-col"></colgroup>
+          <thead>
+            <tr>
+              <th scope="col">日期</th>
+              <th scope="col" class="company-time-weekday" aria-label="星期">周</th>
+              <th scope="col" class="company-time-start">上班</th>
+              <th scope="col" class="company-time-chart" aria-label="时间轴"><div class="company-time-axis" id="company-time-axis" aria-hidden="true"></div></th>
+              <th scope="col" class="company-time-end">下班</th>
+            </tr>
+          </thead>
+          <tbody id="company-time-rows"></tbody>
+        </table>
+      </div>
+    </dialog>
     <aside id="detail-drawer" class="drawer" role="dialog" aria-modal="true" aria-hidden="true" aria-label="详情" inert>
       <button class="drawer-close" data-action="close-drawer" aria-label="关闭详情">×</button>
       <div id="drawer-content"></div>

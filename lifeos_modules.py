@@ -17,13 +17,14 @@ ROOT_DESCRIPTION = "LifeOS CLI：本地运行的个人工作系统，用子弹�
 ROOT_EPILOG = """领域边界：
   project  校验项目工作区的 lifeos-project.json；不写 Private Runtime。
   work     个人工作记录（按天记的每一笔：• 待办、– 随记、? 疑问、! 洞见，以及项目引用和名词）；查询与写入都在此域。
+  company-time  上班簿，按上班日期记录个人的上下班时间。
   sessions 只读 Agent 应用来源，维护私有派生索引；不写来源日志、Work 或日报。
   git      只读本地 Git 提交，维护日报辅助证据快照；不修改仓库、remote、Work 或日报正文。
   dchat    只读 p2p / extp2p 私聊与项目清单群聊，维护私有原始证据；不发送消息、修改 DChat 或写 Work。
   calendar 只读 D-Chat 日历日程，维护私有快照与循环会议出席名单；不改日程、不回复邀请、不写 Work。
   reports  日报与周期报的结构和状态；正文由 lifeos Skill 的对应分支维护。
   web      只读本地工作台；只监听回环地址，不写 Work、日报或其它 Runtime。
-  push     把 Work 数据、日报与本机渲染的只读站点推到私有配置的 SSH 目标；证据、备份与配置不离开本机。
+  push     把 Work 数据、上班簿、报告与本机渲染的只读站点推到私有配置的 SSH 目标。
 
 所有时间窗口使用半开区间 [from, to)；具体参数、默认值和写入边界以对应子命令 --help 为准。"""
 
@@ -91,6 +92,12 @@ def _config(domains: Any, context: ModuleContext) -> None:
     register_config_parser(domains)
 
 
+def _company_time(domains: Any, context: ModuleContext) -> None:
+    from lifeos_company_time.cli import register_company_time_parser
+
+    register_company_time_parser(domains, context.data_dir)
+
+
 def _capabilities(domains: Any, context: ModuleContext) -> None:
     del context
     from lifeos_config.cli import register_capabilities_parser
@@ -148,6 +155,7 @@ def _push(domains: Any, context: ModuleContext) -> None:
 
 COMMAND_MODULES = (
     CommandModule("work", _work),
+    CommandModule("company-time", _company_time),
     CommandModule("config", _config),
     CommandModule("capabilities", _capabilities),
     CommandModule("git", _git),

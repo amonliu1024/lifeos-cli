@@ -53,6 +53,7 @@ lifeos work init --self-name "你的名字" --source "本人确认"
 ## 命令地图
 
 - `lifeos work`：个人工作记录，待办、随记、疑问、洞见以及项目引用和术语的查询与写入
+- `lifeos company-time set`：新增、补记或修改当天的上下班时间
 - `lifeos reports`：日报与周期报的落点、权限、frontmatter、草稿写入与确认状态
 - `lifeos project`：校验项目工作区的 `lifeos-project.json`，从配置的发现根动态发现项目
 - `lifeos sessions`：只读采集本机支持的 Agent 会话来源
@@ -62,7 +63,18 @@ lifeos work init --self-name "你的名字" --source "本人确认"
 - `lifeos config`：Git 外私人配置的初始化与校验，以及项目发现根和镜像目标的设置
 - `lifeos capabilities`：无副作用地查看本机哪些能力已就绪、已禁用或不可用
 - `lifeos web`：在本机回环地址启动只读工作台
-- `lifeos push`：把 Work 数据、日报与只读工作台单向镜像到自己的 SSH 服务器
+- `lifeos push`：把 Work 数据、上班簿、报告与只读工作台单向镜像到自己的 SSH 服务器
+
+## 上班簿
+
+以北京时间的上班日期为归属，每天一条。新增、补记和修改都用 `lifeos company-time set`。命令只更新本次填入的字段。跨天请给出下班的实际日期和时间。
+
+```sh
+lifeos company-time set 2026-11-20 --start 10:04
+lifeos company-time set 2026-11-20 --end "2026-11-21 00:40"
+```
+
+工作台右上角的时钟图标打开只读月历。手动运行 `lifeos push` 后，镜像工作台显示同步的记录。
 
 ## 只读 Web 工作台
 
@@ -70,7 +82,7 @@ lifeos work init --self-name "你的名字" --source "本人确认"
 
 ## 服务器镜像
 
-`lifeos config mirror --target lab:lifeos-mirror` 在私有配置里记下一个 SSH 目标，之后每次手动运行 `lifeos push`，就用 rsync 把两部分单向推过去：`data/` 是 Work 事实、审计事件和日报原文，`site/` 是在本机渲染好的只读工作台。目标机不需要安装 LifeOS，用静态文件服务托管 `site/` 即可浏览，挂在根目录或子路径下都行，项目名称已在本机解析，例如用 Tailscale 挂到私有地址的 `/lifeos/` 下：`tailscale serve --bg --set-path /lifeos ~/lifeos-mirror/site`。推送后的文件只有 SSH 账户本人可读，静态服务需以该账户或 root（如 tailscale serve）运行，其他普通用户读不到镜像内容。`lifeos push -n` 只列出将要变化的文件。派生视图、Sessions、Git、DChat 证据、备份与私有配置不在推送范围内。
+`lifeos config mirror --target lab:lifeos-mirror` 在私有配置里记下一个 SSH 目标，之后每次手动运行 `lifeos push`，就用 rsync 把两部分单向推过去：`data/` 是 Work 事实、审计事件、上班簿与报告原文，`site/` 是在本机渲染好的只读工作台。目标机不需要安装 LifeOS，用静态文件服务托管 `site/` 即可浏览，挂在根目录或子路径下都行，项目名称已在本机解析，例如用 Tailscale 挂到私有地址的 `/lifeos/` 下：`tailscale serve --bg --set-path /lifeos ~/lifeos-mirror/site`。推送后的文件只有 SSH 账户本人可读，静态服务需以该账户或 root（如 tailscale serve）运行，其他普通用户读不到镜像内容。`lifeos push -n` 只列出将要变化的文件。派生视图、Sessions、Git、DChat 证据、备份与私有配置不在推送范围内。
 
 ## 工作模型
 
