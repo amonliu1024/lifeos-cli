@@ -317,10 +317,19 @@ function companyTimeLabel(value, day) {
 function companyTimeTrack(start, end, day, position) {
   const left = start ? position(companyTimeHour(start, day)) : null;
   const right = end ? position(companyTimeHour(end, day)) : null;
-  const range = left !== null && right !== null ? `<line x1="${left}%" x2="${right}%" y1="6" y2="6"/>` : "";
+  let range = "";
+  let duration = "";
+  if (left !== null && right !== null) {
+    range = `<line x1="${left}%" x2="${right}%" y1="6" y2="6"/>`;
+    const minutes = (Date.parse(end) - Date.parse(start)) / 60000;
+    const hours = Math.floor(minutes / 60);
+    const remainder = minutes % 60;
+    const midpoint = (left + right) / 2;
+    duration = `<time class="company-time-duration" datetime="PT${hours}H${remainder}M" style="--duration-position: ${midpoint}%">${hours}h${twoDigits(remainder)}m</time>`;
+  }
   const from = left !== null ? `<circle cx="${left}%" cy="6" r="2.5"/>` : "";
   const to = right !== null ? `<circle class="is-end" cx="${right}%" cy="6" r="2.5"/>` : "";
-  return `<svg class="company-time-track" aria-hidden="true" focusable="false">${range}${from}${to}</svg>`;
+  return `<div class="company-time-plot">${duration}<svg class="company-time-track" aria-hidden="true" focusable="false">${range}${from}${to}</svg></div>`;
 }
 
 function renderCompanyTime(today = companyTimeToday()) {

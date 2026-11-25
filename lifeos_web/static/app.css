@@ -836,7 +836,7 @@ h1, h2, h3, p { margin-top: 0; }
 .company-time-table .company-time-end { text-align: right; padding-inline-end: var(--space-4); }
 .company-time-table .company-time-chart { padding-inline: var(--space-4) var(--space-2); }
 .company-time-axis { display: flex; justify-content: space-between; margin-inline: 2px; color: var(--faint); }
-.company-time-axis span, .company-time-table td time { position: relative; }
+.company-time-axis span, .company-time-start time, .company-time-end time { position: relative; }
 .company-time-offset {
   position: absolute;
   top: -2px;
@@ -846,7 +846,17 @@ h1, h2, h3, p { margin-top: 0; }
   line-height: 10px;
 }
 .company-time-axis .company-time-offset { top: 0; }
-.company-time-track { display: block; width: calc(100% - 4px); height: 12px; margin-inline: 2px; overflow: visible; }
+.company-time-plot { position: relative; margin-inline: 2px; }
+.company-time-plot:has(.company-time-duration) { padding-top: var(--line-meta); }
+.company-time-duration {
+  position: absolute;
+  top: 0;
+  left: clamp(4ch, var(--duration-position), 100% - 4ch);
+  transform: translateX(-50%);
+  color: var(--faint);
+  font-size: 8px;
+}
+.company-time-track { display: block; width: 100%; height: 12px; overflow: visible; }
 .company-time-track line { stroke: var(--faint); stroke-dasharray: 2 2; opacity: .62; }
 .company-time-track circle { fill: var(--surface); stroke: var(--faint); }
 .company-time-track .is-end { fill: var(--faint); }
