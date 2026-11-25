@@ -320,15 +320,15 @@ function companyTimeTrack(start, end, day, position) {
   let range = "";
   let duration = "";
   if (left !== null && right !== null) {
-    range = `<line x1="${left}%" x2="${right}%" y1="6" y2="6"/>`;
+    range = `<line x1="${left}%" x2="${right}%" y1="50%" y2="50%"/>`;
     const minutes = (Date.parse(end) - Date.parse(start)) / 60000;
     const hours = Math.floor(minutes / 60);
     const remainder = minutes % 60;
     const midpoint = (left + right) / 2;
-    duration = `<time class="company-time-duration" datetime="PT${hours}H${remainder}M" style="--duration-position: ${midpoint}%">${hours}h${twoDigits(remainder)}m</time>`;
+    duration = `<time class="company-time-duration" datetime="PT${hours}H${remainder}M" data-midpoint="${midpoint}%">${hours}h${twoDigits(remainder)}m</time>`;
   }
-  const from = left !== null ? `<circle cx="${left}%" cy="6" r="2.5"/>` : "";
-  const to = right !== null ? `<circle class="is-end" cx="${right}%" cy="6" r="2.5"/>` : "";
+  const from = left !== null ? `<circle cx="${left}%" cy="50%" r="2.5"/>` : "";
+  const to = right !== null ? `<circle class="is-end" cx="${right}%" cy="50%" r="2.5"/>` : "";
   return `<div class="company-time-plot">${duration}<svg class="company-time-track" aria-hidden="true" focusable="false">${range}${from}${to}</svg></div>`;
 }
 
@@ -356,7 +356,8 @@ function renderCompanyTime(today = companyTimeToday()) {
     `<span>${twoDigits((hour % 24 + 24) % 24)}${hour === midnight ? companyTimeOffset(1) : ""}</span>`
   ).join("");
   companyTimeNext.disabled = month >= currentMonth;
-  document.querySelector("#company-time-rows").innerHTML = dates.map((day, index) => {
+  const rows = document.querySelector("#company-time-rows");
+  rows.innerHTML = dates.map((day, index) => {
     const weekday = new Date(day).getUTCDay();
     const { started_at: start, ended_at: end } = records[day] ?? {};
     const quiet = (weekday === 0 || weekday === 6) && !start && !end;
@@ -370,6 +371,9 @@ function renderCompanyTime(today = companyTimeToday()) {
       <td class="company-time-weekday" aria-label="周${companyTimeWeekdays[weekday]}">${companyTimeWeekdays[weekday]}</td>
       ${times}</tr>`;
   }).join("");
+  for (const duration of rows.querySelectorAll(".company-time-duration")) {
+    duration.style.left = duration.dataset.midpoint;
+  }
 }
 
 function changeCompanyTimeMonth(step) {

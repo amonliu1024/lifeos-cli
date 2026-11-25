@@ -847,16 +847,16 @@ h1, h2, h3, p { margin-top: 0; }
 }
 .company-time-axis .company-time-offset { top: 0; }
 .company-time-plot { position: relative; margin-inline: 2px; }
-.company-time-plot:has(.company-time-duration) { padding-top: var(--line-meta); }
+.company-time-plot:has(.company-time-duration) { padding-top: var(--space-2); }
 .company-time-duration {
   position: absolute;
   top: 0;
-  left: clamp(4ch, var(--duration-position), 100% - 4ch);
   transform: translateX(-50%);
   color: var(--faint);
   font-size: 8px;
+  line-height: 1;
 }
-.company-time-track { display: block; width: 100%; height: 12px; overflow: visible; }
+.company-time-track { display: block; width: 100%; height: 6px; overflow: visible; }
 .company-time-track line { stroke: var(--faint); stroke-dasharray: 2 2; opacity: .62; }
 .company-time-track circle { fill: var(--surface); stroke: var(--faint); }
 .company-time-track .is-end { fill: var(--faint); }
