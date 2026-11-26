@@ -7,7 +7,7 @@ from pathlib import Path
 from typing import Any
 
 from .core import LifeOSConfig, SUPPORTED_PROJECT_SOURCES, SUPPORTED_SESSION_SOURCES
-from lifeos_sessions.adapters import source_root
+from lifeos_sessions.adapters import source_roots
 
 
 def _status(status: str, reason: str) -> dict[str, str]:
@@ -19,7 +19,7 @@ def capability_report(config: LifeOSConfig) -> dict[str, Any]:
     for source in SUPPORTED_SESSION_SOURCES:
         if source not in config.session_sources:
             sessions[source] = _status("disabled", "not_enabled")
-        elif source_root(source).is_dir():
+        elif any(path.is_dir() for path in source_roots(source)):
             sessions[source] = _status("ready", "source_directory_available")
         else:
             sessions[source] = _status("unavailable", "source_directory_missing")

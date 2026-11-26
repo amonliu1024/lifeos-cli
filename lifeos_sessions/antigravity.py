@@ -77,7 +77,9 @@ class _IndexEntry:
 class _FileRead:
     path: Path
     locator: str
+    checkpoint_key: str
     conversation_id: str
+    entry: Optional[_IndexEntry]
     records: List[Mapping[str, Any]]
     projected: List[Mapping[str, Any]]
     last_hash: Optional[str]
@@ -88,6 +90,20 @@ class _FileRead:
     used_compact_fallback: bool
     projection_warnings: List[str]
     turn_warnings: Dict[str, List[str]]
+
+
+def default_antigravity_roots(home: Optional[Path] = None) -> List[Path]:
+    """Return known AntiGravity session roots (standalone CLI and T3 antigravity-acp)."""
+    base_home = home or Path.home()
+    roots = [base_home / ".gemini" / "antigravity-cli"]
+    t3_provider_dir = base_home / ".t3" / "userdata" / "providers" / "antigravity"
+    if t3_provider_dir.is_dir():
+        roots.extend(
+            path
+            for path in sorted(t3_provider_dir.glob("*/antigravity-acp"), key=lambda item: str(item))
+            if path.is_dir()
+        )
+    return roots
 
 
 def _canonical_json(value: Any) -> str:
@@ -416,6 +432,7 @@ def _read_jsonl(
     root: Path,
     conversation_id: str,
     *,
+    checkpoint_key: str,
     entry: Optional[_IndexEntry],
     used_compact_fallback: bool,
 ) -> _FileRead:
@@ -470,7 +487,9 @@ def _read_jsonl(
     return _FileRead(
         path=path,
         locator=locator,
+        checkpoint_key=checkpoint_key,
         conversation_id=conversation_id,
+        entry=entry,
         records=records,
         projected=projected,
         last_hash=last_hash,
@@ -534,50 +553,54 @@ class AntigravityAdapter:
     def cache_generation(self) -> str:
         return adapter_cache_generation(self.name, self.adapter_version)
 
-    def __init__(self, root: Optional[os.PathLike[str] | str] = None) -> None:
-        self.root = (
-            Path(root).expanduser()
-            if root is not None
-            else Path.home() / ".gemini" / "antigravity-cli"
-        )
+    def __init__(
+        self,
+        root: Optional[os.PathLike[str] | str] = None,
+        *,
+        roots: Optional[Sequence[os.PathLike[str] | str]] = None,
+    ) -> None:
+        if roots is not None:
+            resolved_roots = [Path(item).expanduser() for item in roots]
+            if not resolved_roots:
+                raise ValueError("AntiGravity roots must not be empty")
+            self.roots = resolved_roots
+        elif root is not None:
+            self.roots = [Path(root).expanduser()]
+        else:
+            self.roots = default_antigravity_roots()
+        self.root = self.roots[0]
         self.brain_root = self.root / "brain"
         self.index_path = self.root / "conversation_summaries.db"
 
-    def _load_index(self) -> Tuple[Dict[str, _IndexEntry], List[str]]:
-        if not self.index_path.is_file():
-            return {}, ["index_unavailable:conversation_summaries.db"]
+    def _query_index(self, uri: str) -> Tuple[Dict[str, _IndexEntry], List[str]]:
         entries: Dict[str, _IndexEntry] = {}
         parents: Dict[str, str] = {}
-        uri = self.index_path.resolve().as_uri() + "?mode=ro"
+        connection = sqlite3.connect(uri, uri=True, timeout=5)
+        connection.row_factory = sqlite3.Row
         try:
-            connection = sqlite3.connect(uri, uri=True, timeout=5)
-            connection.row_factory = sqlite3.Row
-            try:
-                tables = {
-                    str(row["name"])
-                    for row in connection.execute(
-                        "SELECT name FROM sqlite_master WHERE type='table'"
-                    ).fetchall()
-                }
-                if "conversation_parents" in tables:
-                    for row in connection.execute(
-                        "SELECT conversation_id, parent_id FROM conversation_parents"
-                    ).fetchall():
-                        cid = clean_text(row["conversation_id"])
-                        pid = clean_text(row["parent_id"])
-                        if cid and pid:
-                            parents[cid] = pid
-                if "conversation_summaries" not in tables:
-                    return {}, ["index_unavailable:missing_conversation_summaries_table"]
-                rows = connection.execute(
-                    "SELECT conversation_id, title, workspace_uris, "
-                    "parent_conversation_id, last_modified_time "
-                    "FROM conversation_summaries"
+            tables = {
+                str(row["name"])
+                for row in connection.execute(
+                    "SELECT name FROM sqlite_master WHERE type='table'"
                 ).fetchall()
-            finally:
-                connection.close()
-        except (OSError, sqlite3.DatabaseError) as exc:
-            return {}, [f"index_unavailable:{type(exc).__name__}"]
+            }
+            if "conversation_parents" in tables:
+                for row in connection.execute(
+                    "SELECT conversation_id, parent_id FROM conversation_parents"
+                ).fetchall():
+                    cid = clean_text(row["conversation_id"])
+                    pid = clean_text(row["parent_id"])
+                    if cid and pid:
+                        parents[cid] = pid
+            if "conversation_summaries" not in tables:
+                return {}, ["index_unavailable:missing_conversation_summaries_table"]
+            rows = connection.execute(
+                "SELECT conversation_id, title, workspace_uris, "
+                "parent_conversation_id, last_modified_time "
+                "FROM conversation_summaries"
+            ).fetchall()
+        finally:
+            connection.close()
 
         for row in rows:
             cid = clean_text(row["conversation_id"])
@@ -593,12 +616,34 @@ class AntigravityAdapter:
             )
         return entries, []
 
-    def _discover(self) -> Tuple[List[Tuple[str, Path, bool]], List[str]]:
-        if not self.brain_root.is_dir():
+    def _load_index_from_root(self, root: Path) -> Tuple[Dict[str, _IndexEntry], List[str]]:
+        index_path = root / "conversation_summaries.db"
+        if not index_path.is_file():
+            return {}, ["index_unavailable:conversation_summaries.db"]
+        base_uri = index_path.resolve().as_uri()
+        wal_path = index_path.parent / f"{index_path.name}-wal"
+        try:
+            try:
+                return self._query_index(base_uri + "?mode=ro")
+            except sqlite3.OperationalError:
+                # SQLite databases with WAL header flags but no -wal/-shm sidecars
+                # fail to open under ?mode=ro unless immutable=1 is set.
+                if wal_path.exists():
+                    raise
+                return self._query_index(base_uri + "?mode=ro&immutable=1")
+        except (OSError, sqlite3.DatabaseError) as exc:
+            return {}, [f"index_unavailable:{type(exc).__name__}"]
+
+    def _load_index(self) -> Tuple[Dict[str, _IndexEntry], List[str]]:
+        return self._load_index_from_root(self.root)
+
+    def _discover_from_root(self, root: Path) -> Tuple[List[Tuple[str, Path, bool]], List[str]]:
+        brain_root = root / "brain"
+        if not brain_root.is_dir():
             return [], []
         discovered: List[Tuple[str, Path, bool]] = []
         warnings: List[str] = []
-        for conv_dir in sorted((p for p in self.brain_root.iterdir() if p.is_dir()), key=lambda p: p.name):
+        for conv_dir in sorted((p for p in brain_root.iterdir() if p.is_dir()), key=lambda p: p.name):
             logs_dir = conv_dir / ".system_generated" / "logs"
             full_path = logs_dir / "transcript_full.jsonl"
             compact_path = logs_dir / "transcript.jsonl"
@@ -612,11 +657,14 @@ class AntigravityAdapter:
                 resolved = target.resolve()
             except OSError:
                 resolved = target.absolute()
-            if not _is_within(self.root, resolved):
-                warnings.append(f"source_path_outside_root:{_relative_locator(self.root, target)}")
+            if not _is_within(root, resolved):
+                warnings.append(f"source_path_outside_root:{_relative_locator(root, target)}")
                 continue
             discovered.append((conv_dir.name, resolved, used_compact))
         return discovered, warnings
+
+    def _discover(self) -> Tuple[List[Tuple[str, Path, bool]], List[str]]:
+        return self._discover_from_root(self.root)
 
     def _checkpoint_entry(self, read: _FileRead, index_fingerprint: Optional[str]) -> Dict[str, Any]:
         stat = read.path.stat()
@@ -654,7 +702,12 @@ class AntigravityAdapter:
             )
         previous_checkpoint = getattr(request, "checkpoint", None)
         previous_checkpoint = previous_checkpoint if isinstance(previous_checkpoint, Mapping) else {}
-        if not self.root.exists() or not self.root.is_dir():
+        if len(self.roots) == 1:
+            active_roots = [self.roots[0]] if self.roots[0].is_dir() else []
+        else:
+            existing_roots = [item for item in self.roots if item.is_dir()]
+            active_roots = [item for item in existing_roots if (item / "brain").is_dir()] or existing_roots[:1]
+        if not active_roots:
             return AdapterResult(
                 source=self.name,
                 status="failed",
@@ -667,8 +720,19 @@ class AntigravityAdapter:
                 stats={"files_examined": 0, "records_examined": 0, "slices": 0},
             )
 
-        index, index_warnings = self._load_index()
-        discovered, discovery_warnings = self._discover()
+        multi_root = len(self.roots) > 1
+        index_warnings: List[str] = []
+        discovery_warnings: List[str] = []
+        discovered_items: List[Tuple[Path, str, Path, bool, Optional[_IndexEntry], bool]] = []
+        for root in active_roots:
+            root_index, root_idx_warnings = self._load_index_from_root(root)
+            root_discovered, root_disc_warnings = self._discover_from_root(root)
+            index_warnings.extend(root_idx_warnings)
+            discovery_warnings.extend(root_disc_warnings)
+            has_index = bool(root_index)
+            for cid, path, used_compact in root_discovered:
+                discovered_items.append((root, cid, path, used_compact, root_index.get(cid), has_index))
+
         includes = [str(value) for value in getattr(request, "includes", ())]
         previous_files = previous_checkpoint.get("files", {})
         if not isinstance(previous_files, Mapping) or previous_checkpoint.get("cache_generation") != self.cache_generation:
@@ -679,7 +743,12 @@ class AntigravityAdapter:
             "includes": sorted(includes),
             "source_format": self.source_format,
         }
-        locators = {_relative_locator(self.root, path): (cid, path, used_compact) for cid, path, used_compact in discovered}
+        locators: Dict[str, Tuple[Path, str, Path, bool, Optional[_IndexEntry], bool]] = {}
+        for root, cid, path, used_compact, entry, has_index in discovered_items:
+            rel = _relative_locator(root, path)
+            ckey = f"{root.resolve()}|{rel}" if multi_root else rel
+            locators[ckey] = (root, cid, path, used_compact, entry, has_index)
+
         cached_result = previous_checkpoint.get("result")
         if (
             previous_checkpoint.get("version") == 1
@@ -691,11 +760,11 @@ class AntigravityAdapter:
             and isinstance(cached_result, Mapping)
             and set(previous_files) == set(locators)
             and all(
-                isinstance(previous_files.get(locator), Mapping)
-                and _stat_matches(path, previous_files[locator])
-                and previous_files[locator].get("index_fingerprint")
-                == (index[cid].fingerprint if cid in index else None)
-                for locator, (cid, path, _used_compact) in locators.items()
+                isinstance(previous_files.get(ckey), Mapping)
+                and _stat_matches(path, previous_files[ckey])
+                and previous_files[ckey].get("index_fingerprint")
+                == (entry.fingerprint if entry else None)
+                for ckey, (_root, _cid, path, _used_compact, entry, _has_index) in locators.items()
             )
         ):
             slice_ids = cached_result.get("slice_ids")
@@ -718,9 +787,9 @@ class AntigravityAdapter:
                     checkpoint=previous_checkpoint,
                     warnings=tuple(cached_warnings),
                     stats={
-                        "files_examined": len(discovered),
+                        "files_examined": len(discovered_items),
                         "files_read": 0,
-                        "files_skipped": len(discovered),
+                        "files_skipped": len(discovered_items),
                         "records_examined": 0,
                         "slices": len(slice_ids),
                         "reused_from_checkpoint": len(slice_ids),
@@ -737,28 +806,28 @@ class AntigravityAdapter:
         reads: List[_FileRead] = []
         warnings: List[str] = [*index_warnings, *discovery_warnings]
         skipped_files = 0
-        for cid, path, used_compact in discovered:
-            locator = _relative_locator(self.root, path)
-            entry = index.get(cid)
-            if entry is None and index:
+        for ckey, (root, cid, path, used_compact, entry, has_index) in locators.items():
+            locator = _relative_locator(root, path)
+            if entry is None and has_index:
                 warnings.append(f"index_entry_missing:{cid}")
             index_fingerprint = entry.fingerprint if entry else None
-            previous = previous_files.get(locator)
+            previous = previous_files.get(ckey)
             if isinstance(previous, Mapping) and _can_skip_unchanged_file(
                 path, previous, from_ms, to_ms, index_fingerprint
             ):
-                checkpoint["files"][locator] = dict(previous)
+                checkpoint["files"][ckey] = dict(previous)
                 skipped_files += 1
                 continue
             try:
                 read = _read_jsonl(
                     path,
-                    self.root,
+                    root,
                     cid,
+                    checkpoint_key=ckey,
                     entry=entry,
                     used_compact_fallback=used_compact,
                 )
-                checkpoint["files"][locator] = self._checkpoint_entry(read, index_fingerprint)
+                checkpoint["files"][ckey] = self._checkpoint_entry(read, index_fingerprint)
             except OSError as exc:
                 warnings.append(f"read_error:{locator}:{type(exc).__name__}")
                 continue
@@ -768,7 +837,7 @@ class AntigravityAdapter:
         documents = []
         turn_warnings: Dict[Tuple[str, str], List[str]] = {}
         for read in reads:
-            entry = index.get(read.conversation_id)
+            entry = read.entry
             for turn_id, values in read.turn_warnings.items():
                 turn_warnings[(read.conversation_id, turn_id)] = list(values)
             documents.append(
@@ -846,7 +915,7 @@ class AntigravityAdapter:
             checkpoint=checkpoint,
             warnings=warnings,
             stats={
-                "files_examined": len(discovered),
+                "files_examined": len(discovered_items),
                 "files_read": len(reads),
                 "files_skipped": skipped_files,
                 **normalized.stats,
@@ -855,4 +924,4 @@ class AntigravityAdapter:
         )
 
 
-__all__ = ["AntigravityAdapter"]
+__all__ = ["AntigravityAdapter", "default_antigravity_roots"]

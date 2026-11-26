@@ -28,7 +28,7 @@ from .retention import CONFIG_NAME as RETENTION_CONFIG, RetentionPolicy
 from .store import SessionNotFound, SessionsStore, StoreError
 from .adapters import (
     SESSION_SOURCE_NAMES,
-    source_root,
+    source_roots,
     build_adapters,
     resolve_selected_sources,
 )
@@ -234,7 +234,7 @@ def command_show(args: Any) -> None:
         item = SessionsStore(args.sessions_root).show(args.slice_id, args.revision)
         if args.evidence_ref:
             _sources([item["source"]])
-            page = read_evidence(item, args.evidence_ref, source_root(item["source"]),
+            page = read_evidence(item, args.evidence_ref, source_roots(item["source"]),
                                  offset=args.offset, limit=args.limit)
             if args.json:
                 _json(page)

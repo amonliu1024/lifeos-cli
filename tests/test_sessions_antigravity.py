@@ -5,7 +5,7 @@ import unittest
 from datetime import datetime
 from pathlib import Path
 
-from lifeos_sessions.antigravity import AntigravityAdapter
+from lifeos_sessions.antigravity import AntigravityAdapter, default_antigravity_roots
 from lifeos_sessions.core import SourceScanRequest, TimeWindow
 from lifeos_sessions.evidence import read_evidence
 
@@ -464,6 +464,172 @@ class AntigravityAdapterTest(unittest.TestCase):
         self.assertEqual("complete", third.status)
         self.assertEqual(1, third.stats["files_read"])
         self.assertEqual("新标题", as_dict(third.slices[0])["conversation"]["title"])
+
+    def test_wal_db_without_sidecars_falls_back_to_immutable_readonly(self):
+        conv_id = "conv-wal"
+        write_summaries_db(
+            self.root,
+            [(conv_id, "WAL 会话", '["file:///synthetic/wal"]', "", "2026-11-20T06:30:00Z")],
+        )
+        # Switch DB to WAL mode, checkpoint, close, and remove any sidecars while keeping WAL header bytes (2, 2).
+        db_path = self.root / "conversation_summaries.db"
+        conn = sqlite3.connect(db_path)
+        try:
+            conn.execute("PRAGMA journal_mode=WAL").fetchall()
+            conn.execute("PRAGMA wal_checkpoint(TRUNCATE)").fetchall()
+        finally:
+            conn.close()
+        for suffix in ("-wal", "-shm"):
+            sidecar = Path(str(db_path) + suffix)
+            if sidecar.exists():
+                sidecar.unlink()
+        header = bytearray(db_path.read_bytes())
+        header[18] = 2
+        header[19] = 2
+        db_path.write_bytes(bytes(header))
+
+        write_transcript(
+            self.root,
+            conv_id,
+            [
+                {
+                    "step_index": 0,
+                    "source": "USER_EXPLICIT",
+                    "type": "USER_INPUT",
+                    "status": "DONE",
+                    "created_at": "2026-11-20T06:30:00Z",
+                    "content": "<USER_REQUEST>\nWAL 只读回退\n</USER_REQUEST>",
+                },
+                {
+                    "step_index": 1,
+                    "source": "MODEL",
+                    "type": "PLANNER_RESPONSE",
+                    "status": "DONE",
+                    "created_at": "2026-11-20T06:30:02Z",
+                    "content": "完成。",
+                },
+            ],
+        )
+
+        first = self.scan()
+        self.assertEqual("complete", first.status)
+        self.assertEqual([], list(first.warnings))
+        self.assertEqual(1, len(first.slices))
+        self.assertEqual("WAL 会话", as_dict(first.slices[0])["conversation"]["title"])
+
+        second = self.scan(checkpoint=first.checkpoint)
+        self.assertEqual(0, second.stats["files_read"])
+        self.assertEqual(1, second.stats["files_skipped"])
+
+    def test_scans_both_cli_and_t3_roots_and_reads_evidence_from_matching_root(self):
+        t3_root = Path(self.temp.name) / ".t3" / "userdata" / "providers" / "antigravity" / "abc123" / "antigravity-acp"
+        t3_root.mkdir(parents=True)
+        write_summaries_db(
+            self.root,
+            [("conv-cli", "CLI 会话", '["file:///synthetic/cli"]', "", "2026-11-20T07:00:01Z")],
+        )
+        write_summaries_db(
+            t3_root,
+            [("conv-t3", "T3 会话", '["file:///synthetic/t3"]', "", "2026-11-20T08:00:01Z")],
+        )
+        write_transcript(
+            self.root,
+            "conv-cli",
+            [
+                {
+                    "step_index": 0,
+                    "source": "USER_EXPLICIT",
+                    "type": "USER_INPUT",
+                    "status": "DONE",
+                    "created_at": "2026-11-20T07:00:00Z",
+                    "content": "<USER_REQUEST>\nCLI 请求\n</USER_REQUEST>",
+                },
+                {
+                    "step_index": 1,
+                    "source": "MODEL",
+                    "type": "PLANNER_RESPONSE",
+                    "status": "DONE",
+                    "created_at": "2026-11-20T07:00:01Z",
+                    "tool_calls": [{"name": "read_file", "args": {"Path": "/synthetic/cli/a.py"}}],
+                },
+                {
+                    "step_index": 2,
+                    "source": "MODEL",
+                    "type": "GENERIC",
+                    "status": "DONE",
+                    "created_at": "2026-11-20T07:00:02Z",
+                    "content": "ok",
+                },
+                {
+                    "step_index": 3,
+                    "source": "MODEL",
+                    "type": "PLANNER_RESPONSE",
+                    "status": "DONE",
+                    "created_at": "2026-11-20T07:00:03Z",
+                    "content": "CLI 请求已完成。",
+                },
+            ],
+        )
+        write_transcript(
+            t3_root,
+            "conv-t3",
+            [
+                {
+                    "step_index": 0,
+                    "source": "USER_EXPLICIT",
+                    "type": "USER_INPUT",
+                    "status": "DONE",
+                    "created_at": "2026-11-20T08:00:00Z",
+                    "content": "<USER_REQUEST>\nT3 请求\n</USER_REQUEST>",
+                },
+                {
+                    "step_index": 1,
+                    "source": "MODEL",
+                    "type": "PLANNER_RESPONSE",
+                    "status": "DONE",
+                    "created_at": "2026-11-20T08:00:01Z",
+                    "tool_calls": [{"name": "read_file", "args": {"Path": "/synthetic/t3/b.py"}}],
+                },
+                {
+                    "step_index": 2,
+                    "source": "MODEL",
+                    "type": "GENERIC",
+                    "status": "DONE",
+                    "created_at": "2026-11-20T08:00:02Z",
+                    "content": "ok",
+                },
+                {
+                    "step_index": 3,
+                    "source": "MODEL",
+                    "type": "PLANNER_RESPONSE",
+                    "status": "DONE",
+                    "created_at": "2026-11-20T08:00:03Z",
+                    "content": "T3 请求已完成。",
+                },
+            ],
+        )
+
+        discovered_roots = default_antigravity_roots(Path(self.temp.name))
+        self.assertEqual([self.root, t3_root], discovered_roots)
+
+        adapter = AntigravityAdapter(roots=discovered_roots)
+        first = adapter.scan(request())
+        self.assertEqual("complete", first.status)
+        self.assertEqual(2, len(first.slices))
+        by_id = {as_dict(s)["conversation"]["id"]: as_dict(s) for s in first.slices}
+        self.assertEqual("CLI 会话", by_id["conv-cli"]["conversation"]["title"])
+        self.assertEqual("T3 会话", by_id["conv-t3"]["conversation"]["title"])
+
+        for cid, expected_path in (("conv-cli", "/synthetic/cli/a.py"), ("conv-t3", "/synthetic/t3/b.py")):
+            item = by_id[cid]
+            ref = item["source_meta"]["evidence_records"][0]["ref"]
+            page = read_evidence(item, ref, discovered_roots)
+            self.assertTrue(page["source_verified"])
+            self.assertIn(expected_path, page["text"])
+
+        second = adapter.scan(request(checkpoint=first.checkpoint))
+        self.assertEqual(0, second.stats["files_read"])
+        self.assertEqual(2, second.stats["files_skipped"])
 
 
 if __name__ == "__main__":

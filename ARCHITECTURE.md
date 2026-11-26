@@ -112,7 +112,7 @@ Sessions 的工具状态由 `tool_results` 统一判定，适配器在同一 Tur
 
 Pi Adapter 读取 `~/.pi/agent/sessions` 的 v2/v3 树形 JSONL，以原生 user message ID 作为 Turn 身份，通过 `parentId` 归并真实分支事件；compaction、branch summary、扩展注入和 thinking 不进入正文。它与 Codex、Claude、SmartWork、DeepSeek、AntiGravity 共用同一 Slice、checkpoint 与清洗接口，不建立 Pi 专用存储。
 
-AntiGravity Adapter 只读读取 `~/.gemini/antigravity-cli/brain/<conversation-id>/.system_generated/logs/transcript_full.jsonl`（缺失时回退 `transcript.jsonl`）及同根目录的 `conversation_summaries.db`，以 `USER_INPUT` step 作为 Turn 身份，剥离系统包装标签与 `thinking`，将 `tool_calls` 与后续 `GENERIC` step 关联为有界工具证据和原记录引用，不读取 `history.jsonl` 或二进制状态。
+AntiGravity Adapter 只读读取 `~/.gemini/antigravity-cli` 与 `~/.t3/userdata/providers/antigravity/*/antigravity-acp` 下 `brain/<conversation-id>/.system_generated/logs/transcript_full.jsonl`（缺失时回退 `transcript.jsonl`）及同根目录的 `conversation_summaries.db`（无 `-wal` 伴随文件时回退 `immutable=1` 只读），以 `USER_INPUT` step 作为 Turn 身份，剥离系统包装标签与 `thinking`，将 `tool_calls` 与后续 `GENERIC` step 关联为有界工具证据和原记录引用，不读取 `history.jsonl` 或二进制状态。
 
 ## 安全属性
 
