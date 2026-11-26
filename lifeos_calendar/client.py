@@ -22,6 +22,10 @@ class CalendarClient(Protocol):
     def info(self, event_id: str) -> Mapping[str, Any]: ...
 
 
+def _is_missing_event_error(message: str) -> bool:
+    return "500000005" in message or "事件不存在" in message
+
+
 class DwsCalendarAdapter:
     """Run ``dws calendar`` read commands and parse their JSON envelope from stdout."""
 
@@ -86,7 +90,15 @@ class DwsCalendarAdapter:
         return data
 
     def info(self, event_id: str) -> Mapping[str, Any]:
-        data = self._run(["calendar", "info", event_id])
+        try:
+            data = self._run(["calendar", "info", event_id])
+        except CalendarClientError as exc:
+            if exc.kind == "temporary_dependency_failure" and _is_missing_event_error(str(exc)):
+                return {}
+            raise
+        if isinstance(data, str) and _is_missing_event_error(data):
+            # dws returns ok=true with an error sentence when search lists an event whose detail no longer exists.
+            return {}
         if not isinstance(data, dict):
             raise CalendarClientError("unsupported_payload", "dws 日程详情不是对象")
         return data

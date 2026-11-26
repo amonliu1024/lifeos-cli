@@ -9,6 +9,7 @@ from pathlib import Path
 
 sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
 
+from lifeos_calendar.client import CalendarClientError, DwsCalendarAdapter  # noqa: E402
 from lifeos_calendar.core import CalendarService, TimeWindow  # noqa: E402
 from lifeos_calendar.evidence import build_index  # noqa: E402
 from lifeos_calendar.store import CalendarStore  # noqa: E402
@@ -107,6 +108,64 @@ class CalendarServiceTest(unittest.TestCase):
         self.assertEqual(3, result["summary"]["events"])
         self.assertIn("detail_unavailable:temporary_dependency_failure", result["warnings"])
         self.assertEqual([], result["events"][0]["attendees"])
+
+
+class DwsCalendarAdapterTest(unittest.TestCase):
+    def _write_wrapper(self, directory: Path, info_payload: str) -> str:
+        wrapper = directory / "fake-dws.sh"
+        wrapper.write_text(
+            "#!/usr/bin/env bash\n"
+            "set -euo pipefail\n"
+            "if [[ \"$1\" == --output ]]; then shift 2; fi\n"
+            "if [[ \"$1\" == calendar && \"$2\" == search ]]; then\n"
+            f"  cat <<'JSON'\n{json.dumps({'ok': True, 'data': [SEARCH_EVENTS[2]]}, ensure_ascii=False)}\nJSON\n"
+            "elif [[ \"$1\" == calendar && \"$2\" == info ]]; then\n"
+            f"  cat <<'JSON'\n{info_payload}\nJSON\n"
+            "fi\n",
+            encoding="utf-8",
+        )
+        return str(wrapper)
+
+    def test_missing_event_error_string_falls_back_to_empty_detail(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            adapter = DwsCalendarAdapter(
+                self._write_wrapper(
+                    Path(tmp),
+                    json.dumps({"ok": True, "data": "日历服务错误(error_code=500000005): 事件不存在"}, ensure_ascii=False),
+                )
+            )
+            result = CalendarService(adapter).scan(TimeWindow.from_values("2026-08-24", "2026-08-25"))
+            self.assertEqual("complete", result["status"])
+            self.assertEqual([], result["warnings"])
+            self.assertEqual(0, result["summary"]["detail_failures"])
+            self.assertEqual(1, result["summary"]["events"])
+            self.assertEqual([], result["events"][0]["attendees"])
+            self.assertEqual("国际化行政固定周会", result["events"][0]["summary"])
+
+    def test_missing_event_error_envelope_also_falls_back_to_empty_detail(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            adapter = DwsCalendarAdapter(
+                self._write_wrapper(
+                    Path(tmp),
+                    json.dumps({"ok": False, "error": {"message": "日历服务错误(error_code=500000005): 事件不存在"}}, ensure_ascii=False),
+                )
+            )
+            self.assertEqual({}, adapter.info("E-WEEKLY"))
+
+    def test_other_string_detail_error_still_marks_partial(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            adapter = DwsCalendarAdapter(
+                self._write_wrapper(
+                    Path(tmp),
+                    json.dumps({"ok": True, "data": "日历服务错误(error_code=500000001): 服务异常"}, ensure_ascii=False),
+                )
+            )
+            with self.assertRaises(CalendarClientError) as ctx:
+                adapter.info("E-WEEKLY")
+            self.assertEqual("unsupported_payload", ctx.exception.kind)
+            result = CalendarService(adapter).scan(TimeWindow.from_values("2026-08-24", "2026-08-25"))
+            self.assertEqual("partial", result["status"])
+            self.assertIn("detail_unavailable:unsupported_payload", result["warnings"])
 
 
 class CalendarStoreTest(unittest.TestCase):
