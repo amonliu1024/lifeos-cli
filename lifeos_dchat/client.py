@@ -4,10 +4,16 @@ from __future__ import annotations
 
 import json
 import os
+import random
 import subprocess
 import tempfile
+import threading
+import time
 from pathlib import Path
 from typing import Any, Dict, Mapping, Protocol, Sequence
+
+
+DEFAULT_RETRY_DELAYS = (0.4, 1.0)
 
 
 class DChatClientError(RuntimeError):
@@ -29,12 +35,23 @@ class DChatClient(Protocol):
 class DwsDChatAdapter:
     """Read JSON exports without exposing their temporary files to the store."""
 
-    def __init__(self, wrapper: str, *, timeout: int = 120):
+    def __init__(
+        self,
+        wrapper: str,
+        *,
+        timeout: int = 120,
+        max_concurrency: int = 1,
+        retry_delays: Sequence[float] = DEFAULT_RETRY_DELAYS,
+    ):
         path = Path(wrapper).expanduser()
         if not path.is_absolute() or not path.is_file():
             raise DChatClientError("client_unavailable", "dws wrapper 必须是存在的绝对文件")
+        if isinstance(max_concurrency, bool) or not isinstance(max_concurrency, int) or max_concurrency < 1:
+            raise ValueError("max_concurrency 必须是正整数")
         self.wrapper = str(path)
         self.timeout = timeout
+        self._ipc_slots = threading.Semaphore(max_concurrency)
+        self.retry_delays = tuple(float(delay) for delay in retry_delays)
 
     def _export(self, arguments: Sequence[str]) -> Dict[str, Any]:
         with tempfile.TemporaryDirectory(prefix="lifeos-dchat-") as directory:
@@ -48,15 +65,18 @@ class DwsDChatAdapter:
             # is only surfaced when the command fails.
             command = ["bash", self.wrapper, "--debug", *arguments, str(output)]
             try:
-                completed = subprocess.run(
-                    command,
-                    capture_output=True,
-                    text=True,
-                    encoding="utf-8",
-                    errors="replace",
-                    timeout=self.timeout,
-                    check=False,
-                )
+                # Serialize local workspace-server IPC access so worker threads do
+                # not drop connections contending for the DChat socket.
+                with self._ipc_slots:
+                    completed = subprocess.run(
+                        command,
+                        capture_output=True,
+                        text=True,
+                        encoding="utf-8",
+                        errors="replace",
+                        timeout=self.timeout,
+                        check=False,
+                    )
             except (FileNotFoundError, PermissionError, subprocess.TimeoutExpired) as exc:
                 raise DChatClientError("client_unavailable", str(exc)) from exc
             if completed.returncode != 0:
@@ -97,10 +117,22 @@ class DwsDChatAdapter:
     def dump_messages(
         self, conversation_id: str, from_value: str, to_value: str, limit: int
     ) -> Sequence[Mapping[str, Any]]:
-        data = self._export([
+        arguments = [
             "message", "+dump-by-chat", "--by-chat-id", conversation_id,
             "--from", from_value, "--to", to_value, "--limit", str(limit),
-        ])
+        ]
+        # list_chats already confirmed the client is running; retry transient
+        # IPC disconnects here while letting deterministic errors fail fast.
+        for attempt in range(len(self.retry_delays) + 1):
+            try:
+                data = self._export(arguments)
+                break
+            except DChatClientError as exc:
+                if exc.kind != "client_unavailable" or attempt >= len(self.retry_delays):
+                    raise
+                delay = self.retry_delays[attempt]
+                if delay > 0:
+                    time.sleep(delay + random.uniform(0.0, min(0.2, delay * 0.25)))
         messages = data.get("messages")
         if not isinstance(messages, list) or not all(isinstance(item, dict) for item in messages):
             raise DChatClientError("unsupported_payload", "dws 消息 messages 非数组")

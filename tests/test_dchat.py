@@ -477,6 +477,97 @@ class DChatConfigTest(unittest.TestCase):
             self.assertIn("重跑同一条", str(caught.exception))
             self.assertIn("不要改用桌面操作", str(caught.exception))
 
+    def test_dws_adapter_serializes_concurrent_dump_calls(self):
+        with tempfile.TemporaryDirectory() as directory:
+            wrapper = Path(directory) / "wrapper.sh"
+            wrapper.write_text("#!/usr/bin/env bash\n", encoding="utf-8")
+            client = DwsDChatAdapter(str(wrapper))
+            lock = threading.Lock()
+            active = peak = 0
+
+            def fake_run(command, **kwargs):
+                nonlocal active, peak
+                with lock:
+                    active += 1
+                    peak = max(peak, active)
+                try:
+                    threading.Event().wait(0.03)
+                    Path(command[-1]).write_text('{"ok":true,"data":{"messages":[{"key":"m1"}]}}', encoding="utf-8")
+                    return subprocess.CompletedProcess(command, 0, stdout="", stderr="")
+                finally:
+                    with lock:
+                        active -= 1
+
+            with patch("lifeos_dchat.client.subprocess.run", side_effect=fake_run):
+                with ThreadPoolExecutor(max_workers=3) as pool:
+                    results = list(pool.map(
+                        lambda cid: client.dump_messages(cid, "2026-08-24", "2026-08-25", 10),
+                        ["c1", "c2", "c3"],
+                    ))
+            self.assertEqual(1, peak)
+            self.assertEqual(3, len(results))
+
+    def test_dump_messages_retries_transient_client_unavailable(self):
+        with tempfile.TemporaryDirectory() as directory:
+            wrapper = Path(directory) / "wrapper.sh"
+            wrapper.write_text("#!/usr/bin/env bash\n", encoding="utf-8")
+            client = DwsDChatAdapter(str(wrapper), retry_delays=(0.4, 1.0))
+            attempts = 0
+            sleeps = []
+
+            def fake_run(command, **kwargs):
+                nonlocal attempts
+                attempts += 1
+                if attempts < 3:
+                    return subprocess.CompletedProcess(
+                        command, 1, stdout="", stderr="无法连接至 d-chat 客户端"
+                    )
+                Path(command[-1]).write_text('{"ok":true,"data":{"messages":[{"key":"m1"}]}}', encoding="utf-8")
+                return subprocess.CompletedProcess(command, 0, stdout="", stderr="")
+
+            with patch("lifeos_dchat.client.subprocess.run", side_effect=fake_run), \
+                 patch("lifeos_dchat.client.time.sleep", side_effect=sleeps.append):
+                messages = client.dump_messages("dm", "2026-08-24", "2026-08-25", 10)
+            self.assertEqual(3, attempts)
+            self.assertEqual(2, len(sleeps))
+            self.assertEqual("m1", messages[0]["key"])
+
+    def test_list_chats_and_deterministic_errors_fail_fast_without_retry(self):
+        with tempfile.TemporaryDirectory() as directory:
+            wrapper = Path(directory) / "wrapper.sh"
+            wrapper.write_text("#!/usr/bin/env bash\n", encoding="utf-8")
+            client = DwsDChatAdapter(str(wrapper), retry_delays=(0.4, 1.0))
+
+            with patch(
+                "lifeos_dchat.client.subprocess.run",
+                return_value=subprocess.CompletedProcess([], 1, stdout="", stderr="无法连接至 d-chat 客户端"),
+            ) as run_mock, patch("lifeos_dchat.client.time.sleep") as sleep_mock:
+                with self.assertRaises(DChatClientError) as caught:
+                    client.list_chats()
+                self.assertEqual("client_unavailable", caught.exception.kind)
+                self.assertEqual(1, run_mock.call_count)
+                sleep_mock.assert_not_called()
+
+            with patch(
+                "lifeos_dchat.client.subprocess.run",
+                return_value=subprocess.CompletedProcess([], 1, stdout="", stderr="permission denied"),
+            ) as run_mock, patch("lifeos_dchat.client.time.sleep") as sleep_mock:
+                with self.assertRaises(DChatClientError) as caught:
+                    client.dump_messages("dm", "2026-08-24", "2026-08-25", 10)
+                self.assertEqual("history_forbidden", caught.exception.kind)
+                self.assertEqual(1, run_mock.call_count)
+                sleep_mock.assert_not_called()
+
+            with patch(
+                "lifeos_dchat.client.subprocess.run",
+                return_value=subprocess.CompletedProcess([], 1, stdout="", stderr="无法连接至 d-chat 客户端"),
+            ) as run_mock, patch("lifeos_dchat.client.time.sleep") as sleep_mock:
+                with self.assertRaises(DChatClientError) as caught:
+                    client.dump_messages("dm", "2026-08-24", "2026-08-25", 10)
+                self.assertEqual("client_unavailable", caught.exception.kind)
+                self.assertEqual(3, run_mock.call_count)
+                self.assertEqual(2, sleep_mock.call_count)
+
 
 class DChatCLITest(unittest.TestCase):
     def setUp(self):
