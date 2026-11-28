@@ -113,7 +113,7 @@ const MARKS = {
 const ICONS = {
   star: `<path d="M8.1 1.8c.6 1.3 1.2 2.6 1.9 3.9 1.4.1 2.8.3 4.2.6-1 1-2.1 1.9-3.1 2.9.3 1.4.5 2.8.7 4.2L8 11.4c-1.3.7-2.5 1.3-3.8 2 .2-1.4.5-2.8.8-4.2-1-1-2-1.9-3-2.9 1.4-.2 2.8-.4 4.2-.5.6-1.4 1.2-2.7 1.9-4z"/>`,
   folder: `<path d="M2.4 4.6c0-.7.4-1.1 1.1-1.1h2.8c.5 0 .8.2 1.1.6l.6.9h4.6c.7 0 1.1.4 1.1 1.1v5.8c0 .7-.4 1.1-1.1 1.1H3.5c-.7 0-1.1-.4-1.1-1.1z"/>`,
-  waiting: `<path d="M4.3 2.6c2.5.2 4.9-.1 7.4.1"/><path d="M4.4 13.4c2.4-.2 4.9.1 7.3-.1"/><path d="M5 2.8c.2 2.4 1.5 3.9 3 5.1 1.6-1.3 2.8-2.7 3-5"/><path d="M5.1 13.2c.2-2.3 1.4-3.9 2.9-5.3 1.6 1.4 2.8 2.9 3 5.2"/>`,
+  person: `<circle cx="8" cy="5.5" r="2.4"/><path d="M3.4 13c.5-2.3 2.2-3.6 4.6-3.6s4.1 1.3 4.6 3.6"/>`,
   chevron: `<path d="M5.2 6.3c1 1.1 1.9 2.2 2.9 3.3 1-1.1 1.9-2.2 2.9-3.2"/>`,
 };
 const CLOSED_LABELS = { done: "想通了", converted: "转成了", dropped: "划掉" };
@@ -165,8 +165,8 @@ function dueMark(value) {
   return `<span class="due-mark" title="${title}">${monthDay(value)}</span>`;
 }
 
-function waitingMark(owner) {
-  return `<span class="waiting-mark">${svg(ICONS.waiting)}等${esc(owner)}</span>`;
+function ownerMark(owner) {
+  return `<span class="owner-mark" title="负责人：${esc(owner)}">${svg(ICONS.person)}<span>${esc(owner)}</span></span>`;
 }
 
 function projectDay(project, day) {
@@ -174,22 +174,24 @@ function projectDay(project, day) {
   return `${name}<span>${monthDay(day)}</span>`;
 }
 
-function entryLine(entry, { aside = "", sub = "" } = {}) {
+function entryLine(entry, { aside = "", sub = "", badge = "" } = {}) {
   const classes = ["entry-line", `is-${entry.kind}`];
   if (["done", "converted"].includes(entry.status)) classes.push("is-done");
   if (entry.status === "dropped") classes.push("is-dropped");
   if (entry.kind === "task" && entry.owner && entry.live) classes.push("is-waiting");
   return `<button class="${classes.join(" ")}" data-open-id="${esc(entry.id)}">
     ${bullet(entry)}
-    <span class="entry-body"><span class="entry-text">${esc(entry.text)}</span>${starMark(entry)}${sub ? `<span class="entry-sub">${esc(sub)}</span>` : ""}</span>
+    <span class="entry-body"><span class="entry-text">${esc(entry.text)}</span>${starMark(entry)}${badge}${sub ? `<span class="entry-sub">${esc(sub)}</span>` : ""}</span>
     <span class="entry-aside">${aside}</span>
   </button>`;
 }
 
-function workCard(title, lines, fold = null) {
+function workCard(title, lines, { fold = null, icon = false, count = null } = {}) {
+  const iconHtml = icon ? `<span class="work-head-icon">${svg(ICONS.folder)}</span>` : "";
+  const countHtml = count !== null ? `<span class="work-group-count">${count}</span>` : "";
   const head = fold
-    ? `<button class="card-sheet fold-toggle" data-fold="${esc(fold.key)}" aria-expanded="${fold.open}"><h2 class="work-title">${esc(title)}</h2><span class="card-summary">${esc(fold.summary)}</span><span class="fold-chevron">${svg(ICONS.chevron)}</span></button>`
-    : `<div class="card-sheet"><h2 class="work-title">${esc(title)}</h2></div>`;
+    ? `<button class="work-head fold-toggle" data-fold="${esc(fold.key)}" aria-expanded="${fold.open}">${iconHtml}<h2 class="work-title">${esc(title)}</h2><span class="card-summary">${esc(fold.summary)}</span><span class="fold-chevron">${svg(ICONS.chevron)}</span></button>`
+    : `<div class="work-head">${iconHtml}<h2 class="work-title">${esc(title)}</h2>${countHtml}</div>`;
   const body = !fold || fold.open ? `<div class="entry-lines">${lines.join("")}</div>` : "";
   return `<article class="work-card${fold && !fold.open ? " is-folded" : ""}">${head}${body}</article>`;
 }
@@ -225,8 +227,9 @@ function doingCards(tasks) {
     order: Math.min(...members.map((task) => (task.mine ? task.rank : task.rank + doing.length))),
   })).sort((left, right) => Number(left.key === "") - Number(right.key === "") || left.order - right.order);
   return groups.map(({ members }) => workCard(projectTitle(members[0]), members.map((task) => entryLine(task, {
-    aside: task.mine ? dueMark(task.due) : `${waitingMark(task.owner)}${task.due ? `<span class="aside-divider"></span>${dueMark(task.due)}` : ""}`,
-  }))));
+    aside: dueMark(task.due),
+    badge: task.mine ? "" : ownerMark(task.owner),
+  })), { icon: Boolean(members[0].project?.name), count: members.length }));
 }
 
 function laterCards(tasks) {
@@ -234,7 +237,10 @@ function laterCards(tasks) {
     .sort((left, right) => String(left.month).localeCompare(String(right.month)));
   return [...groupBy(later, (task) => task.project?.key || "").entries()]
     .sort(([left], [right]) => Number(left === "") - Number(right === ""))
-    .map(([, members]) => workCard(projectTitle(members[0]), members.map((task) => entryLine(task, { aside: monthLabel(task.month) }))));
+    .map(([, members]) => workCard(projectTitle(members[0]), members.map((task) => entryLine(task, { aside: monthLabel(task.month) })), {
+      icon: Boolean(members[0].project?.name),
+      count: members.length,
+    }));
 }
 
 // 已结束：完成和划掉放在一起，按时间（了结的月份）或按项目分组；默认只展开最近的一组。
@@ -257,7 +263,10 @@ function closedCards(tasks) {
     return workCard(byMonth ? `${year} 年 ${Number(month)} 月` : key, members.map((task) => entryLine(task, {
       aside: byMonth ? projectDay(task.project, task.updated_at) : `<span>${monthDay(task.updated_at)}</span>`,
       sub: task.status === "dropped" && task.note ? `划掉：${task.note}` : "",
-    })), { key, open: state.expanded.has(key), summary: `完成 ${done}${dropped ? ` · 划掉 ${dropped}` : ""}` });
+    })), {
+      icon: !byMonth && key !== NO_PROJECT,
+      fold: { key, open: state.expanded.has(key), summary: `完成 ${done}${dropped ? ` · 划掉 ${dropped}` : ""}` },
+    });
   });
 }
 
@@ -476,7 +485,7 @@ function closedNote(entry) {
   return entry.note ? `${label}：${entry.note}` : "";
 }
 
-// 随记和疑问是一套东西：不套卡片，整张列表写在一块内凹的托盘里。
+// 随记和疑问是一套东西：不套卡片，直接落在象牙白纸面上。
 function renderNotes() {
   const open = state.noteMode === "open";
   const items = state.snapshot.entries
